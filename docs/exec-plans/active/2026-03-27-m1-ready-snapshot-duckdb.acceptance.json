@@ -23,7 +23,7 @@
       "id": "M1-002",
       "title": "Deterministic local DuckDB bootstrap exists",
       "priority": 1,
-      "description": "A developer can create or refresh the local DuckDB dev foundation from the repo's deterministic seed fixture.",
+      "description": "A developer can create or refresh the local DuckDB dev foundation from the repo's deterministic seed fixture, including the two-snapshot daily_bar and price_series seed rows used for as-of verification.",
       "artifacts": [
         "backend/app/domains/market_data/bootstrap.py",
         "backend/app/fixtures/published_snapshot.json"
@@ -35,11 +35,12 @@
     },
     {
       "id": "M1-003",
-      "title": "Latest READY snapshot API reads from DuckDB",
+      "title": "Latest snapshot and stock as-of APIs read from DuckDB",
       "priority": 1,
-      "description": "Backend runtime assembles the latest published snapshot payload from DuckDB-backed tables rather than reading the JSON fixture directly.",
+      "description": "Backend runtime assembles the latest published snapshot payload plus minimal stock snapshot/kline as-of responses from DuckDB-backed tables rather than reading the JSON fixture directly.",
       "artifacts": [
         "backend/app/domains/market_data/repo.py",
+        "backend/app/api/dev_server.py",
         "backend/app/app_wiring/container.py",
         "backend/app/shared/providers/duckdb.py"
       ],
@@ -63,6 +64,22 @@
       "verify_steps": [
         "scripts/init_dev.sh",
         "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M1-005",
+      "title": "Daily bar and price series as-of semantics are verified",
+      "priority": 1,
+      "description": "The dev seed includes two snapshot generations with a revision on the same trade date, and app smoke verifies that older and newer as-of queries resolve to different effective rows as expected.",
+      "artifacts": [
+        "backend/app/domains/market_data/bootstrap.py",
+        "backend/app/domains/market_data/repo.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev"
       ],
       "passes": true
     }

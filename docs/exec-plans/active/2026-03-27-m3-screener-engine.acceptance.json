@@ -1,0 +1,70 @@
+{
+  "plan_id": "2026-03-27-m3-screener-engine",
+  "title": "M3 Screener Engine",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "M3-001",
+      "title": "Screener schema supports explainable results",
+      "priority": 1,
+      "description": "DuckDB schema versions screener result rows with total score, score components, matched rules, and risk flags.",
+      "artifacts": [
+        "backend/app/domains/market_data/schema.py",
+        "docs/generated/db-schema.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/render_db_schema.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M3-002",
+      "title": "Deterministic screener bootstrap exists",
+      "priority": 1,
+      "description": "A developer can regenerate screener_run and screener_result from the READY snapshots and current analysis artifacts.",
+      "artifacts": [
+        "backend/app/domains/screener/bootstrap.py"
+      ],
+      "verify_steps": [
+        "python3 -m backend.app.domains.screener.bootstrap --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M3-003",
+      "title": "Dedicated screener APIs return latest run and results",
+      "priority": 1,
+      "description": "Backend exposes latest/by-id screener run endpoints, and app smoke verifies both summary and result-list reads.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev",
+        "pnpm run frontend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M3-004",
+      "title": "Query path is read-only and stable",
+      "priority": 2,
+      "description": "Runtime bootstrap happens before serving, while repo reads use explicit DuckDB read-only connections to avoid lock conflicts and write-on-read side effects.",
+      "artifacts": [
+        "backend/app/app_wiring/dev_bootstrap.py",
+        "backend/app/shared/providers/duckdb.py",
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/api/dev_server.py"
+      ],
+      "verify_steps": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "plan_id": "2026-03-27-m5-application-service-tasking",
+  "title": "M5 Application Service And Tasking",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "M5-001",
+      "title": "Task and health GET APIs exist",
+      "priority": 1,
+      "description": "Backend exposes latest task runs and system health so the runtime can be inspected without reading snapshot payloads indirectly.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M5-002",
+      "title": "Queue-backed POST triggers exist",
+      "priority": 1,
+      "description": "Developers can explicitly submit deterministic daily sync, screener rebuild, and backtest rebuild requests from API POST endpoints, and those requests are persisted before execution.",
+      "artifacts": [
+        "backend/app/api/dev_server.py",
+        "backend/app/domains/tasking/queue.py",
+        "backend/app/domains/backtest/queue.py",
+        "backend/app/domains/tasking/worker.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M5-003",
+      "title": "App smoke covers queue and worker service surfaces",
+      "priority": 2,
+      "description": "The smoke path validates task runs, system health, queued POST request objects, worker consumption, and cleanup back to deterministic baseline in addition to the existing read APIs.",
+      "artifacts": [
+        "scripts/app_smoke.py",
+        "scripts/smoke.sh",
+        "backend/app/domains/tasking/worker.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M5-004",
+      "title": "Tasking records queue-backed state precisely",
+      "priority": 2,
+      "description": "The repo clearly records that current POST triggers are queue-backed manual requests with worker consumption, while scheduler, retries, and alerting remain deferred.",
+      "artifacts": [
+        "docs/exec-plans/active/2026-03-27-m5-application-service-tasking.md",
+        "docs/exec-plans/tech-debt-tracker.md",
+        "docs/QUALITY_SCORE.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/check_execution_harness.py --print-summary"
+      ],
+      "passes": true
+    }
+  ]
+}

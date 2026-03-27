@@ -16,7 +16,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.app_wiring.settings import load_settings
+from backend.app.domains.backtest.queue import delete_backtest_request_artifacts
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
+from backend.app.domains.tasking.queue import delete_service_task_artifacts
 
 
 def find_free_port() -> int:
@@ -33,6 +35,18 @@ def fetch_json(url: str) -> dict[str, object]:
 def fetch_text(url: str) -> str:
     with urllib.request.urlopen(url, timeout=5) as response:
         return response.read().decode("utf-8")
+
+
+def post_json(url: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+    data = json.dumps(payload or {}).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 def wait_for(check_name: str, url: str, timeout_seconds: float = 12.0) -> None:
@@ -83,6 +97,18 @@ def stop_process(process: subprocess.Popen[bytes]) -> None:
         log_file.close()
 
 
+def run_checked_command(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    print(f"[app-smoke] run: {' '.join(command)}")
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def main() -> int:
     settings = load_settings()
     ensure_runtime_directories(settings)
@@ -113,6 +139,8 @@ def main() -> int:
         backend_log,
     )
     frontend = None
+    queued_backtest_id: str | None = None
+    queued_service_task_ids: list[str] = []
 
     try:
         wait_for("backend health", f"{backend_origin}/health")
@@ -127,6 +155,69 @@ def main() -> int:
 
         backend_payload = fetch_json(f"{backend_origin}/api/v1/snapshot/latest")
         frontend_proxy_payload = fetch_json(f"{frontend_origin}/api/v1/snapshot/latest")
+        stock_snapshot_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/snapshot"
+        )
+        latest_raw_kline_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/kline?dataset=daily_bar"
+            "&raw_snapshot_id=raw_snapshot_2026-03-27_close_001"
+        )
+        previous_raw_kline_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/kline?dataset=daily_bar"
+            "&raw_snapshot_id=raw_snapshot_2026-03-26_close_001"
+        )
+        frontend_price_kline_payload = fetch_json(
+            f"{frontend_origin}/api/v1/stocks/300750.SZ/kline?dataset=price_series"
+        )
+        indicator_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/indicators"
+        )
+        capital_flow_payload = fetch_json(
+            f"{frontend_origin}/api/v1/stocks/300750.SZ/capital-flow"
+        )
+        screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
+        screener_results_payload = fetch_json(
+            f"{backend_origin}/api/v1/screener/runs/{screener_latest_payload['run_id']}/results"
+        )
+        backtest_latest_payload = fetch_json(f"{backend_origin}/api/v1/backtests/runs/latest")
+        backtest_trades_payload = fetch_json(
+            f"{backend_origin}/api/v1/backtests/runs/{backtest_latest_payload['backtest_id']}/trades"
+        )
+        backtest_curve_payload = fetch_json(
+            f"{frontend_origin}/api/v1/backtests/runs/{backtest_latest_payload['backtest_id']}/equity-curve"
+        )
+        task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
+        system_health_payload = fetch_json(f"{frontend_origin}/api/v1/system/health")
+        daily_sync_post_payload = post_json(f"{backend_origin}/api/v1/tasks/daily-sync/run")
+        daily_screener_post_payload = post_json(f"{backend_origin}/api/v1/tasks/daily-screener/run")
+        queued_service_task_ids.extend(
+            [
+                str(daily_sync_post_payload["task"]["task_id"]),
+                str(daily_screener_post_payload["task"]["task_id"]),
+            ]
+        )
+        queued_task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
+        service_worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "2"],
+            env,
+        )
+        processed_task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
+        refreshed_screener_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
+        backtest_post_payload = post_json(
+            f"{backend_origin}/api/v1/backtests/runs",
+            {"top_n": 3},
+        )
+        queued_backtest_id = str(backtest_post_payload["backtest"]["backtest_id"])
+        queued_backtest_payload = fetch_json(
+            f"{backend_origin}/api/v1/backtests/runs/{queued_backtest_id}"
+        )
+        worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "backtest"],
+            env,
+        )
+        processed_backtest_payload = fetch_json(
+            f"{backend_origin}/api/v1/backtests/runs/{backtest_post_payload['backtest']['backtest_id']}"
+        )
         frontend_html = fetch_text(f"{frontend_origin}/")
         frontend_js = fetch_text(f"{frontend_origin}/main.js")
 
@@ -135,9 +226,118 @@ def main() -> int:
         assert backend_payload["market_overview"]["trade_date"] == "2026-03-27"
         assert backend_payload["runtime"]["duckdb_path"].endswith("quanta.duckdb")
         assert backend_payload["task_status"]["data_update"] == "SUCCESS"
+        assert backend_payload["screener"]["strategy_name"] == "三策略候选池"
+        assert len(backend_payload["screener"]["top_candidates"]) >= 3
+        assert backend_payload["screener"]["top_candidates"][0]["strategy_name"] in {
+            "趋势突破",
+            "放量启动",
+            "资金共振",
+        }
+        assert (
+            backend_payload["screener"]["top_candidates"][0]["trend_score"] is not None
+        )
+        assert (
+            backend_payload["screener"]["top_candidates"][0]["capital_score"] is not None
+        )
+        assert stock_snapshot_payload["available_series"]["daily_bar"]["row_count"] == 3
+        assert stock_snapshot_payload["latest_daily_bar"]["trade_date"] == "2026-03-27"
+        assert abs(stock_snapshot_payload["latest_price_bar"]["close"] - 266.4) < 1e-6
+        assert len(latest_raw_kline_payload["items"]) == 3
+        assert abs(latest_raw_kline_payload["items"][1]["close_raw"] - 258.1) < 1e-6
+        assert (
+            latest_raw_kline_payload["items"][1]["effective_raw_snapshot_id"]
+            == "raw_snapshot_2026-03-27_close_001"
+        )
+        assert len(previous_raw_kline_payload["items"]) == 2
+        assert abs(previous_raw_kline_payload["items"][-1]["close_raw"] - 257.4) < 1e-6
+        assert len(frontend_price_kline_payload["items"]) == 3
+        assert abs(frontend_price_kline_payload["items"][1]["close"] - 260.1) < 1e-6
+        assert (
+            frontend_price_kline_payload["items"][1]["effective_snapshot_id"]
+            == "snapshot_2026-03-27_ready_001"
+        )
+        assert indicator_payload["range"]["row_count"] == 3
+        assert indicator_payload["latest_indicator"]["effective_snapshot_id"] == "snapshot_2026-03-27_ready_001"
+        assert len(indicator_payload["latest_patterns"]) >= 2
+        assert any(
+            item["signal_code"] == "breakout_up" for item in indicator_payload["latest_patterns"]
+        )
+        assert any(
+            item["signal_code"] == "volume_expansion"
+            for item in indicator_payload["latest_patterns"]
+        )
+        assert capital_flow_payload["range"]["row_count"] == 3
+        assert capital_flow_payload["latest_capital_feature"]["effective_snapshot_id"] == "snapshot_2026-03-27_ready_001"
+        assert capital_flow_payload["latest_capital_feature"]["has_dragon_tiger"] is True
+        assert screener_latest_payload["run_id"].startswith("screener_run_")
+        assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])
+        assert screener_latest_payload["result_count"] >= 3
+        assert screener_latest_payload["results"][0]["rank_no"] == 1
+        assert screener_results_payload["run_id"] == screener_latest_payload["run_id"]
+        assert len(screener_results_payload["results"]) == len(
+            screener_latest_payload["results"]
+        )
+        assert backtest_latest_payload["backtest_id"].startswith("backtest_run_")
+        assert backtest_latest_payload["request"]["payload"]["top_n"] == 2
+        assert len(backtest_latest_payload["trades"]) == 4
+        assert len(backtest_latest_payload["equity_curve"]) == 3
+        assert backtest_trades_payload["backtest_id"] == backtest_latest_payload["backtest_id"]
+        assert len(backtest_trades_payload["trades"]) == len(backtest_latest_payload["trades"])
+        assert backtest_curve_payload["backtest_id"] == backtest_latest_payload["backtest_id"]
+        assert len(backtest_curve_payload["equity_curve"]) == len(
+            backtest_latest_payload["equity_curve"]
+        )
+        assert (
+            backtest_latest_payload["equity_curve"][-1]["equity"]
+            > backtest_latest_payload["equity_curve"][0]["equity"]
+        )
+        assert task_runs_payload["snapshot_id"] == backend_payload["snapshot_id"]
+        assert len(task_runs_payload["items"]) >= 4
+        assert any(item["task_name"] == "backtest" for item in task_runs_payload["items"])
+        assert system_health_payload["status"] == "ok"
+        assert system_health_payload["snapshot_id"] == backend_payload["snapshot_id"]
+        assert system_health_payload["task_count"] == len(task_runs_payload["items"])
+        assert system_health_payload["table_counts"]["backtest_trade"] >= 4
+        assert daily_sync_post_payload["status"] == "accepted"
+        assert daily_sync_post_payload["task"]["task_name"] == "daily_sync"
+        assert daily_sync_post_payload["task"]["status"] == "PENDING"
+        assert daily_screener_post_payload["status"] == "accepted"
+        assert daily_screener_post_payload["task"]["task_name"] == "daily_screener"
+        assert daily_screener_post_payload["task"]["status"] == "PENDING"
+        queued_tasks_by_id = {
+            str(item["task_id"]): item for item in queued_task_runs_payload["items"]
+        }
+        for task_id in queued_service_task_ids:
+            assert queued_tasks_by_id[task_id]["status"] == "PENDING"
+        assert "processed: 2" in service_worker_run.stdout
+        processed_tasks_by_id = {
+            str(item["task_id"]): item for item in processed_task_runs_payload["items"]
+        }
+        for task_id in queued_service_task_ids:
+            assert processed_tasks_by_id[task_id]["status"] == "SUCCESS"
+            assert (
+                processed_tasks_by_id[task_id]["detail"]["queue_source"]
+                == "durable_file_queue"
+            )
+        assert refreshed_screener_payload["run_id"] == screener_latest_payload["run_id"]
+        assert backtest_post_payload["status"] == "accepted"
+        assert backtest_post_payload["backtest"]["status"] == "PENDING"
+        assert backtest_post_payload["backtest"]["payload"]["top_n"] == 3
+        assert queued_backtest_payload["status"] == "PENDING"
+        assert queued_backtest_payload["trades"] == []
+        assert "processed: 1" in worker_run.stdout
+        assert (
+            processed_backtest_payload["backtest_id"]
+            == queued_backtest_id
+        )
+        assert processed_backtest_payload["status"] == "SUCCESS"
+        assert len(processed_backtest_payload["trades"]) >= 4
+        assert len(processed_backtest_payload["equity_curve"]) >= 3
         assert "QuantA" in frontend_html
         assert "fetchLatestSnapshot" in frontend_js
         assert "观察名单" in frontend_html
+        assert "个股详情" in frontend_html
+        assert "价格轨迹" in frontend_html
 
         print("[app-smoke] backend and frontend are healthy")
         print(
@@ -150,6 +350,10 @@ def main() -> int:
         if frontend is not None:
             stop_process(frontend)
         stop_process(backend)
+        if queued_backtest_id:
+            delete_backtest_request_artifacts(settings, backtest_id=queued_backtest_id)
+        for task_id in queued_service_task_ids:
+            delete_service_task_artifacts(settings, task_id=task_id)
 
 
 if __name__ == "__main__":

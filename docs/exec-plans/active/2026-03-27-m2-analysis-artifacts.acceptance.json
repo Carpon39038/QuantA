@@ -1,0 +1,68 @@
+{
+  "plan_id": "2026-03-27-m2-analysis-artifacts",
+  "title": "M2 Analysis Artifacts",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "M2-001",
+      "title": "Analysis artifact schemas are versioned",
+      "priority": 1,
+      "description": "DuckDB schema includes indicator_daily, pattern_signal_daily, and capital_feature_daily with the expected as-of keys.",
+      "artifacts": [
+        "backend/app/domains/market_data/schema.py",
+        "docs/generated/db-schema.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/render_db_schema.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M2-002",
+      "title": "Deterministic analysis bootstrap exists",
+      "priority": 1,
+      "description": "A developer can regenerate indicators, pattern signals, and capital features from the seeded price series foundation.",
+      "artifacts": [
+        "backend/app/domains/analysis/bootstrap.py"
+      ],
+      "verify_steps": [
+        "python3 -m backend.app.domains.analysis.bootstrap --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M2-003",
+      "title": "Indicators and pattern signals are readable via as-of APIs",
+      "priority": 1,
+      "description": "Per-stock analysis endpoints return indicator history, same-day multiple pattern signals, and capital features at a target snapshot.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev",
+        "pnpm run frontend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M2-004",
+      "title": "Developer loop surfaces analysis artifact health",
+      "priority": 2,
+      "description": "Init and smoke display current analysis artifact table status and validate the new analysis APIs.",
+      "artifacts": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

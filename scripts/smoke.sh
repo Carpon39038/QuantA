@@ -16,6 +16,15 @@ python3 "$ROOT/scripts/check_execution_harness.py" --print-summary
 echo "[smoke] duckdb snapshot foundation"
 python3 -m backend.app.domains.market_data.bootstrap --print-summary
 
+echo "[smoke] analysis artifacts"
+python3 -m backend.app.domains.analysis.bootstrap --print-summary
+
+echo "[smoke] screener artifacts"
+python3 -m backend.app.domains.screener.bootstrap --print-summary
+
+echo "[smoke] backtest artifacts"
+python3 -m backend.app.domains.backtest.bootstrap --print-summary
+
 echo "[smoke] backend/frontend startup"
 python3 "$ROOT/scripts/app_smoke.py"
 

@@ -41,11 +41,14 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `snapshot_seq` | `BIGINT` | 原始快照序号; required |
 | `biz_date` | `DATE` | 业务日期; required |
 | `status` | `VARCHAR` | 原始快照状态; required |
-| `source_name` | `VARCHAR` | 当前快照来源; required |
+| `required_datasets_json` | `VARCHAR` | 当前原始快照依赖的数据集 JSON; required |
+| `completeness_json` | `VARCHAR` | 完整性与校验结果 JSON; required |
+| `source_watermark_json` | `VARCHAR` | 外部数据源水位与来源说明 JSON; required |
 | `created_at` | `TIMESTAMP` | 快照生成时间; required |
-| `notes_json` | `VARCHAR` | 补充信息 JSON; nullable |
+| `attempt_no` | `INTEGER` | 生成尝试次数; required |
 | `PRIMARY KEY` | `constraint` | raw_snapshot_id |
 
 ### `artifact_publish`
@@ -77,15 +80,20 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
 | `symbol` | `VARCHAR` | 证券代码; required |
 | `trade_date` | `DATE` | 交易日; required |
-| `open_price` | `DOUBLE` | 开盘价; nullable |
-| `high_price` | `DOUBLE` | 最高价; nullable |
-| `low_price` | `DOUBLE` | 最低价; nullable |
-| `close_price` | `DOUBLE` | 收盘价; nullable |
-| `pre_close_price` | `DOUBLE` | 前收价; nullable |
+| `open_raw` | `DOUBLE` | 原始开盘价; nullable |
+| `high_raw` | `DOUBLE` | 原始最高价; nullable |
+| `low_raw` | `DOUBLE` | 原始最低价; nullable |
+| `close_raw` | `DOUBLE` | 原始收盘价; nullable |
+| `pre_close_raw` | `DOUBLE` | 原始前收价; nullable |
 | `volume` | `DOUBLE` | 成交量; nullable |
 | `amount` | `DOUBLE` | 成交额; nullable |
 | `turnover_rate` | `DOUBLE` | 换手率; nullable |
+| `high_limit` | `DOUBLE` | 涨停价; nullable |
+| `low_limit` | `DOUBLE` | 跌停价; nullable |
+| `limit_rule_code` | `VARCHAR` | 涨跌停规则编码; nullable |
 | `is_suspended` | `BOOLEAN` | 是否停牌; nullable |
+| `source` | `VARCHAR` | 数据来源; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, trade_date |
 
 ## Derived Data
@@ -96,17 +104,86 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
 | `symbol` | `VARCHAR` | 证券代码; required |
 | `trade_date` | `DATE` | 交易日; required |
 | `price_basis` | `VARCHAR` | 价格口径; required |
-| `open_price` | `DOUBLE` | 开盘价; nullable |
-| `high_price` | `DOUBLE` | 最高价; nullable |
-| `low_price` | `DOUBLE` | 最低价; nullable |
-| `close_price` | `DOUBLE` | 收盘价; nullable |
+| `open` | `DOUBLE` | 开盘价; nullable |
+| `high` | `DOUBLE` | 最高价; nullable |
+| `low` | `DOUBLE` | 最低价; nullable |
+| `close` | `DOUBLE` | 收盘价; nullable |
+| `pre_close` | `DOUBLE` | 前收价; nullable |
+| `adj_factor` | `DOUBLE` | 复权因子; nullable |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
 | `volume` | `DOUBLE` | 成交量; nullable |
 | `amount` | `DOUBLE` | 成交额; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | snapshot_id, symbol, trade_date, price_basis |
+
+### `indicator_daily`
+
+技术指标日级结果，供个股页、选股和回测信号读取。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 交易日; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `price_basis` | `VARCHAR` | 价格口径; required |
+| `ma5` | `DOUBLE` | 5 日均线; nullable |
+| `ma10` | `DOUBLE` | 10 日均线; nullable |
+| `ma20` | `DOUBLE` | 20 日均线; nullable |
+| `ma60` | `DOUBLE` | 60 日均线; nullable |
+| `macd_dif` | `DOUBLE` | MACD DIF; nullable |
+| `macd_dea` | `DOUBLE` | MACD DEA; nullable |
+| `macd_hist` | `DOUBLE` | MACD HIST; nullable |
+| `kdj_k` | `DOUBLE` | KDJ K; nullable |
+| `kdj_d` | `DOUBLE` | KDJ D; nullable |
+| `kdj_j` | `DOUBLE` | KDJ J; nullable |
+| `rsi6` | `DOUBLE` | RSI6; nullable |
+| `rsi12` | `DOUBLE` | RSI12; nullable |
+| `boll_upper` | `DOUBLE` | 布林上轨; nullable |
+| `boll_mid` | `DOUBLE` | 布林中轨; nullable |
+| `boll_lower` | `DOUBLE` | 布林下轨; nullable |
+| `volume_ratio` | `DOUBLE` | 量比; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | symbol, trade_date, price_basis, snapshot_id |
+
+### `pattern_signal_daily`
+
+量价与形态信号，一行一个信号，允许同日多信号并存。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 交易日; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `price_basis` | `VARCHAR` | 价格口径; required |
+| `signal_code` | `VARCHAR` | 信号编码; required |
+| `signal_type` | `VARCHAR` | 信号类型; required |
+| `direction` | `VARCHAR` | 方向; required |
+| `is_triggered` | `BOOLEAN` | 是否触发; required |
+| `signal_score` | `DOUBLE` | 信号强度分; required |
+| `payload_json` | `VARCHAR` | 信号细节 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | symbol, trade_date, price_basis, snapshot_id, signal_code |
+
+### `capital_feature_daily`
+
+股票日级资金特征聚合结果，供个股页和选股读取。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 交易日; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `main_net_inflow` | `DOUBLE` | 主力净流入; nullable |
+| `main_net_inflow_ratio` | `DOUBLE` | 主力净流入占成交额比例; nullable |
+| `super_large_order_inflow` | `DOUBLE` | 超大单净流入; nullable |
+| `large_order_inflow` | `DOUBLE` | 大单净流入; nullable |
+| `northbound_net_inflow` | `DOUBLE` | 北向净流入; nullable |
+| `has_dragon_tiger` | `BOOLEAN` | 是否带龙虎榜标签; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | symbol, trade_date, snapshot_id |
 
 ### `market_regime_daily`
 
@@ -159,12 +236,34 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `snapshot_id` | `VARCHAR` | 发布快照标识; required |
 | `signal_price_basis` | `VARCHAR` | 信号价格口径; required |
 | `total_score` | `INTEGER` | 总分; required |
+| `trend_score` | `DOUBLE` | 趋势分; nullable |
+| `price_volume_score` | `DOUBLE` | 量价分; nullable |
+| `capital_score` | `DOUBLE` | 资金分; nullable |
+| `fundamental_score` | `DOUBLE` | 基础过滤分; nullable |
 | `display_name` | `VARCHAR` | 证券简称; required |
 | `thesis` | `VARCHAR` | 投资主线摘要; required |
 | `matched_rules_json` | `VARCHAR` | 命中信号 JSON; required |
 | `risk_flags_json` | `VARCHAR` | 风险标签 JSON; required |
 | `rank_no` | `INTEGER` | 排序名次; required |
 | `PRIMARY KEY` | `constraint` | run_id, symbol |
+
+### `backtest_request`
+
+持久化回测请求，当前作为本地 durable queue 的最小载体。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `backtest_id` | `VARCHAR` | 回测标识; required |
+| `requested_at` | `TIMESTAMP` | 请求创建时间; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `strategy_version` | `VARCHAR` | 策略版本; required |
+| `signal_price_basis` | `VARCHAR` | 信号价格口径; required |
+| `payload_json` | `VARCHAR` | 请求负载 JSON; required |
+| `status` | `VARCHAR` | 请求状态; required |
+| `retry_count` | `INTEGER` | 重试次数; required |
+| `last_error` | `VARCHAR` | 最近错误信息; nullable |
+| `PRIMARY KEY` | `constraint` | backtest_id |
 
 ### `backtest_run`
 
@@ -194,6 +293,46 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `created_at` | `TIMESTAMP` | 创建时间; required |
 | `notes_json` | `VARCHAR` | 说明与备注 JSON; required |
 | `PRIMARY KEY` | `constraint` | backtest_id |
+
+### `backtest_trade`
+
+回测成交明细。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `backtest_id` | `VARCHAR` | 关联回测标识; required |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 成交日期; required |
+| `side` | `VARCHAR` | 买卖方向; required |
+| `price_basis` | `VARCHAR` | 成交价格口径; required |
+| `trade_price` | `DOUBLE` | 成交价; required |
+| `quantity` | `INTEGER` | 成交股数; required |
+| `notional` | `DOUBLE` | 成交额; required |
+| `fee` | `DOUBLE` | 手续费; required |
+| `tax` | `DOUBLE` | 印花税; nullable |
+| `pnl` | `DOUBLE` | 单笔盈亏; nullable |
+| `holding_days` | `INTEGER` | 持有天数; nullable |
+| `reason` | `VARCHAR` | 成交原因说明; required |
+| `rank_no` | `INTEGER` | 候选排名; required |
+| `PRIMARY KEY` | `constraint` | backtest_id, symbol, trade_date, side |
+
+### `backtest_equity_curve`
+
+回测资金曲线。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `backtest_id` | `VARCHAR` | 关联回测标识; required |
+| `trade_date` | `DATE` | 交易日; required |
+| `position_count` | `INTEGER` | 持仓数量; required |
+| `cash` | `DOUBLE` | 现金; required |
+| `market_value` | `DOUBLE` | 持仓市值; required |
+| `equity` | `DOUBLE` | 总权益; required |
+| `drawdown` | `DOUBLE` | 回撤比例; nullable |
+| `daily_return` | `DOUBLE` | 单日收益率; nullable |
+| `benchmark_close` | `DOUBLE` | 基准收盘价; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | backtest_id, trade_date |
 
 ### `task_run_log`
 

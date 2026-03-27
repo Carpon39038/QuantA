@@ -62,11 +62,52 @@
             <h2>观察名单</h2>
           </div>
           <div class="panel-body">
+            <p class="strategy-name" id="screener-summary"></p>
             <ol class="candidate-list" id="candidate-list"></ol>
           </div>
         </article>
 
-        <article class="panel">
+        <article class="panel panel-wide">
+          <div class="panel-header">
+            <p class="panel-kicker">Stock Detail</p>
+            <h2>个股详情</h2>
+          </div>
+          <div class="panel-body">
+            <div class="focus-header">
+              <div>
+                <p class="panel-kicker" id="focus-symbol">等待候选股</p>
+                <h3 id="focus-name">Focus Stock</h3>
+                <p class="summary-text" id="focus-context"></p>
+              </div>
+              <div class="quote-grid" id="quote-grid"></div>
+            </div>
+            <div class="detail-grid">
+              <article class="subpanel">
+                <div class="subpanel-header">
+                  <h3>价格轨迹</h3>
+                  <p class="panel-kicker" id="price-series-meta"></p>
+                </div>
+                <div class="chart-frame" id="price-chart"></div>
+                <div class="mini-grid" id="price-grid"></div>
+              </article>
+              <article class="subpanel">
+                <div class="subpanel-header">
+                  <h3>指标与信号</h3>
+                </div>
+                <div class="mini-grid" id="indicator-grid"></div>
+                <div class="pill-row" id="pattern-list"></div>
+              </article>
+              <article class="subpanel">
+                <div class="subpanel-header">
+                  <h3>资金特征</h3>
+                </div>
+                <div class="mini-grid" id="capital-grid"></div>
+              </article>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel panel-wide">
           <div class="panel-header">
             <p class="panel-kicker">Backtest</p>
             <h2>回测摘要</h2>
@@ -74,7 +115,24 @@
           <div class="panel-body">
             <p class="strategy-name" id="strategy-name"></p>
             <div class="metric-grid" id="metric-grid"></div>
+            <p class="summary-text" id="backtest-request"></p>
+            <div class="chart-frame" id="equity-chart"></div>
             <ul class="bullet-list" id="backtest-notes"></ul>
+            <div class="table-shell">
+              <table class="trade-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>方向</th>
+                    <th>标的</th>
+                    <th>价格</th>
+                    <th>数量</th>
+                    <th>PnL</th>
+                  </tr>
+                </thead>
+                <tbody id="trade-table-body"></tbody>
+              </table>
+            </div>
           </div>
         </article>
 

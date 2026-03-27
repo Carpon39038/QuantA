@@ -1,0 +1,69 @@
+{
+  "plan_id": "2026-03-27-m4-backtest-replay",
+  "title": "M4 Backtest Replay",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "M4-001",
+      "title": "Backtest schema is versioned",
+      "priority": 1,
+      "description": "DuckDB schema now contains backtest_request, backtest_run, backtest_trade, and backtest_equity_curve for deterministic replay and detail reads.",
+      "artifacts": [
+        "backend/app/domains/market_data/schema.py",
+        "docs/generated/db-schema.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/render_db_schema.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M4-002",
+      "title": "Deterministic backtest bootstrap exists",
+      "priority": 1,
+      "description": "A developer can regenerate request/run/trade/equity rows for each READY snapshot from the current screener results.",
+      "artifacts": [
+        "backend/app/domains/backtest/bootstrap.py"
+      ],
+      "verify_steps": [
+        "python3 -m backend.app.domains.backtest.bootstrap --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M4-003",
+      "title": "Dedicated backtest APIs return detail payloads",
+      "priority": 1,
+      "description": "Backend exposes latest/by-id backtest payloads plus trades and equity-curve routes, and app smoke validates the response shape.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev",
+        "pnpm run frontend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M4-004",
+      "title": "Workbench renders detail APIs",
+      "priority": 2,
+      "description": "The frontend workbench reads latest snapshot, screener, stock detail, and backtest detail APIs to render a richer v1.0 research shell.",
+      "artifacts": [
+        "frontend/src/app/index.html",
+        "frontend/src/app/main.js",
+        "frontend/src/app/main.css"
+      ],
+      "verify_steps": [
+        "node --check frontend/src/app/main.js",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

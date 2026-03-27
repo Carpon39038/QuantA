@@ -39,6 +39,9 @@ fi
 
 python3 -m backend.app.domains.tasking.bootstrap
 python3 -m backend.app.domains.market_data.bootstrap --print-summary
+python3 -m backend.app.domains.analysis.bootstrap --print-summary
+python3 -m backend.app.domains.screener.bootstrap --print-summary
+python3 -m backend.app.domains.backtest.bootstrap --print-summary
 python3 "$ROOT/scripts/check_harness_docs.py"
 python3 "$ROOT/scripts/check_execution_harness.py" --print-summary
 

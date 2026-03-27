@@ -5,6 +5,11 @@ from pathlib import Path
 import duckdb
 
 
-def connect_duckdb(path: Path) -> duckdb.DuckDBPyConnection:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return duckdb.connect(str(path))
+def connect_duckdb(
+    path: Path,
+    *,
+    read_only: bool = False,
+) -> duckdb.DuckDBPyConnection:
+    if not read_only:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    return duckdb.connect(str(path), read_only=read_only)
