@@ -13,11 +13,19 @@ def _parse_port(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer, got {raw_value!r}") from exc
 
 
+def _resolve_runtime_path(root_dir: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return root_dir / path
+
+
 @dataclass(frozen=True)
 class AppSettings:
     root_dir: Path
     data_dir: Path
     duckdb_dir: Path
+    duckdb_path: Path
     logs_dir: Path
     queue_dir: Path
     fixture_path: Path
@@ -37,12 +45,20 @@ class AppSettings:
 
 def load_settings() -> AppSettings:
     root_dir = Path(__file__).resolve().parents[3]
-    data_dir = root_dir / os.environ.get("QUANTA_RUNTIME_DATA_DIR", "data")
+    data_dir = _resolve_runtime_path(
+        root_dir,
+        os.environ.get("QUANTA_RUNTIME_DATA_DIR", "data"),
+    )
+    duckdb_path = _resolve_runtime_path(
+        root_dir,
+        os.environ.get("QUANTA_DUCKDB_PATH", "data/duckdb/quanta.duckdb"),
+    )
 
     return AppSettings(
         root_dir=root_dir,
         data_dir=data_dir,
         duckdb_dir=data_dir / "duckdb",
+        duckdb_path=duckdb_path,
         logs_dir=data_dir / "logs",
         queue_dir=data_dir / "queue",
         fixture_path=root_dir / "backend/app/fixtures/published_snapshot.json",

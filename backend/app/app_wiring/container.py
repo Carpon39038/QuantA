@@ -31,7 +31,8 @@ class QuantAContainer:
                 "backend_origin": self.settings.backend_origin,
                 "frontend_origin": self.settings.frontend_origin,
                 "data_dir": str(self.settings.data_dir),
-                "fixture_path": str(self.settings.fixture_path),
+                "duckdb_path": str(self.settings.duckdb_path),
+                "seed_fixture_path": str(self.settings.fixture_path),
             },
         }
 

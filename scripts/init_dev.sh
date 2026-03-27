@@ -29,7 +29,16 @@ for command_name in node pnpm; do
   fi
 done
 
+if python3 -c "import duckdb" >/dev/null 2>&1; then
+  echo "[init] python module available: duckdb"
+else
+  echo "[init] missing required python module: duckdb" >&2
+  echo "[init] install it with: python3 -m pip install --user duckdb" >&2
+  exit 1
+fi
+
 python3 -m backend.app.domains.tasking.bootstrap
+python3 -m backend.app.domains.market_data.bootstrap --print-summary
 python3 "$ROOT/scripts/check_harness_docs.py"
 python3 "$ROOT/scripts/check_execution_harness.py" --print-summary
 

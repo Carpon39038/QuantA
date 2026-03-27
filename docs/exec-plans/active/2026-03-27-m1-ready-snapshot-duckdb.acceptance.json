@@ -1,0 +1,70 @@
+{
+  "plan_id": "2026-03-27-m1-ready-snapshot-duckdb",
+  "title": "M1 Ready Snapshot DuckDB Foundation",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "M1-001",
+      "title": "DuckDB schema is versioned in the repo",
+      "priority": 1,
+      "description": "QuantA has a first landed DuckDB schema definition plus a generated schema snapshot doc.",
+      "artifacts": [
+        "backend/app/domains/market_data/schema.py",
+        "docs/generated/db-schema.md",
+        "scripts/render_db_schema.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/render_db_schema.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M1-002",
+      "title": "Deterministic local DuckDB bootstrap exists",
+      "priority": 1,
+      "description": "A developer can create or refresh the local DuckDB dev foundation from the repo's deterministic seed fixture.",
+      "artifacts": [
+        "backend/app/domains/market_data/bootstrap.py",
+        "backend/app/fixtures/published_snapshot.json"
+      ],
+      "verify_steps": [
+        "python3 -m backend.app.domains.market_data.bootstrap --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M1-003",
+      "title": "Latest READY snapshot API reads from DuckDB",
+      "priority": 1,
+      "description": "Backend runtime assembles the latest published snapshot payload from DuckDB-backed tables rather than reading the JSON fixture directly.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/shared/providers/duckdb.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh",
+        "pnpm run backend:dev",
+        "pnpm run frontend:dev"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M1-004",
+      "title": "Developer loop surfaces DuckDB foundation health",
+      "priority": 2,
+      "description": "Init and smoke both surface whether the DuckDB-backed local data foundation is ready to support development.",
+      "artifacts": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

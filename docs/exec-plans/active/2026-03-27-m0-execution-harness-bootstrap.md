@@ -63,4 +63,4 @@
 
 ## Status
 
-当前状态：最小 execution harness 与 fixture-backed app skeleton 已落地，可用于长时间开发任务的启动、交接、启动验证和完成门禁；下一步是把真实 DuckDB 与任务链替换进这条 smoke 链。
+当前状态：最小 execution harness 已稳定可用，并继续托住后续开发；latest snapshot 读路径现已升级为 DuckDB-backed dev foundation。下一步由 M1 计划继续把真实日线、as-of 查询、任务状态和更高等级 smoke 接进这条链。

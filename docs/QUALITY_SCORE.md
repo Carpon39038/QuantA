@@ -18,11 +18,11 @@
 | Area | Score | Notes |
 | --- | --- | --- |
 | 产品范围定义 | 3 | `mydoc/` 已有较完整的范围文档 |
-| 数据模型设计 | 2 | 快照语义和核心表设计明确，但未落 DDL |
+| 数据模型设计 | 3 | 快照语义明确，且已落第一版 DuckDB DDL 与生成态 schema 快照 |
 | 仓库级 harness | 2 | 已建立入口、计划与约束，但缺 CI 和自动清理 |
-| 执行 harness | 3 | 已有 acceptance、progress、init、smoke，且能跑 fixture-backed app smoke |
-| 后端代码骨架 | 2 | 已有最小 dev server、fixture repo 和 runtime bootstrap |
-| 前端代码骨架 | 2 | 已有最小 workbench shell、dev server 与 API proxy |
+| 执行 harness | 3 | 已有 acceptance、progress、init、smoke，且能跑 DuckDB-backed app smoke |
+| 后端代码骨架 | 3 | 已有最小 dev server、DuckDB bootstrap、latest snapshot API 与 runtime bootstrap |
+| 前端代码骨架 | 2 | 已有最小 workbench shell、dev server 与 API proxy，当前消费 DuckDB-backed latest snapshot |
 | 任务编排 | 0 | 尚未实现 |
 | 可观测性 | 0 | 尚未实现 |
 | 测试与结构校验 | 2 | 已有 repo/execution harness 校验与 backend/frontend smoke 入口 |

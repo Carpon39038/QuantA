@@ -17,5 +17,10 @@
 
 1. `python3 -m backend.app.domains.tasking.bootstrap`
 2. `python3 -m backend.app.api.dev_server`
+3. `python3 -m backend.app.domains.market_data.bootstrap --print-summary`
 
-当前行为仍是 fixture-backed，作用是先把启动、接口和 smoke 入口接起来，后续再替换成真实 DuckDB 与任务链路。
+当前行为已升级为 `DuckDB-backed dev foundation`：
+
+1. 本地 runtime 会在 `data/duckdb/quanta.duckdb` 初始化最小 schema。
+2. 当前仍用仓库 fixture 作为 dev seed，但 backend 读取路径已经走 DuckDB，而不是直接读 JSON。
+3. 后续继续把真实日线同步、as-of 查询和任务链路替换进这套底座。

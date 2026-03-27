@@ -133,6 +133,8 @@ def main() -> int:
         assert backend_payload["status"] == "READY"
         assert backend_payload["snapshot_id"] == frontend_proxy_payload["snapshot_id"]
         assert backend_payload["market_overview"]["trade_date"] == "2026-03-27"
+        assert backend_payload["runtime"]["duckdb_path"].endswith("quanta.duckdb")
+        assert backend_payload["task_status"]["data_update"] == "SUCCESS"
         assert "QuantA" in frontend_html
         assert "fetchLatestSnapshot" in frontend_js
         assert "观察名单" in frontend_html

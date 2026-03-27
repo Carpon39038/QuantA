@@ -2,7 +2,7 @@
 
 ## Current State
 
-最小 execution harness 和 fixture-backed app skeleton 已经落地：active plan、acceptance、progress、`scripts/init_dev.sh`、`scripts/smoke.sh`、backend dev server、frontend dev server 都已加入仓库，并且可以通过 smoke 启动验证。
+最小 execution harness 已经稳定落地，并继续托住了下一步演进：latest snapshot 读路径已从 direct fixture read 推进到 DuckDB-backed dev foundation，`scripts/init_dev.sh` 与 `scripts/smoke.sh` 仍可作为长任务的固定入口。
 
 ## Last Completed
 
@@ -11,6 +11,7 @@
 3. 给新会话补了固定启动入口、backend/frontend dev server 和 app-level smoke 入口。
 4. 把 fixture-backed published snapshot 接到最小后端和前端 workbench shell。
 5. 把相关工作流写回 `docs/HARNESS.md`、`docs/PLANS.md`、`docs/QUALITY_SCORE.md`。
+6. 把 latest snapshot runtime 读路径升级成 DuckDB-backed dev foundation，并新增独立 M1 计划继续推进数据底座。
 
 ## Verification
 
@@ -23,4 +24,4 @@
 
 ## Next Step
 
-把 fixture-backed app skeleton 继续替换成真实 DuckDB、任务状态与浏览器级 UI smoke，让 acceptance 从“能启动并返回稳定样例”推进到“能验证真实产品行为”。
+继续沿 [2026-03-27-m1-ready-snapshot-duckdb.md](/Users/carpon/web/QuantA/docs/exec-plans/active/2026-03-27-m1-ready-snapshot-duckdb.md) 把 `daily_bar`、`price_series_daily`、最小 as-of 查询和更真实的任务链接进这套 foundation，并逐步把 smoke 提升到浏览器级 UI 验证。
