@@ -1,0 +1,1 @@
+"""QuantA backend namespace."""

@@ -1,0 +1,371 @@
+:root {
+  --bg: #f1ebe2;
+  --panel: rgba(254, 250, 244, 0.78);
+  --panel-strong: rgba(255, 250, 245, 0.92);
+  --ink: #1e2a2f;
+  --muted: #5f6d70;
+  --line: rgba(30, 42, 47, 0.12);
+  --accent: #0f7c73;
+  --accent-soft: rgba(15, 124, 115, 0.12);
+  --danger: #b14d38;
+  --danger-soft: rgba(177, 77, 56, 0.12);
+  --success: #2f6b3d;
+  --shadow: 0 22px 60px rgba(43, 35, 26, 0.14);
+  --headline: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  --body: "Avenir Next", "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", "Menlo", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--body);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(15, 124, 115, 0.22), transparent 28%),
+    radial-gradient(circle at top right, rgba(177, 77, 56, 0.2), transparent 32%),
+    linear-gradient(180deg, #f8f3ec 0%, var(--bg) 100%);
+  position: relative;
+}
+
+.canvas-glow {
+  position: fixed;
+  width: 26rem;
+  height: 26rem;
+  border-radius: 999px;
+  filter: blur(40px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.canvas-glow-left {
+  top: -10rem;
+  left: -6rem;
+  background: rgba(15, 124, 115, 0.3);
+}
+
+.canvas-glow-right {
+  top: 18rem;
+  right: -10rem;
+  background: rgba(177, 77, 56, 0.24);
+}
+
+.page-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.hero-panel,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.hero-panel {
+  border-radius: 2rem;
+  padding: 1.5rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.hero-panel::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% -40% 40%;
+  height: 70%;
+  background: linear-gradient(135deg, rgba(15, 124, 115, 0.18), rgba(177, 77, 56, 0.02));
+  transform: rotate(-6deg);
+}
+
+.eyebrow,
+.panel-kicker,
+.meta-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.hero-copy,
+.panel-header,
+.split-grid,
+.dashboard-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 1fr);
+  gap: 1.5rem;
+  align-items: end;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--headline);
+  font-weight: 600;
+}
+
+h1 {
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  line-height: 0.98;
+}
+
+h2 {
+  font-size: 1.9rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.85rem;
+}
+
+.hero-summary,
+.summary-text,
+.candidate-copy,
+.bullet-list,
+.strategy-name {
+  color: var(--muted);
+}
+
+.hero-summary {
+  max-width: 40rem;
+  margin-top: 1rem;
+  font-size: 1.08rem;
+  line-height: 1.7;
+}
+
+.hero-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.meta-card,
+.status-card,
+.index-card,
+.breadth-card,
+.metric-card,
+.task-card {
+  border-radius: 1.25rem;
+  background: var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.meta-card {
+  padding: 1rem;
+}
+
+.meta-card strong {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 1rem;
+}
+
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+.status-card {
+  padding: 1rem;
+}
+
+.status-card strong,
+.index-card strong,
+.metric-card strong,
+.task-card strong {
+  display: block;
+  font-size: 1.28rem;
+  margin-top: 0.35rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  gap: 1rem;
+}
+
+.panel {
+  border-radius: 1.7rem;
+  padding: 1.35rem;
+}
+
+.panel-large {
+  grid-row: span 2;
+}
+
+.panel-header {
+  margin-bottom: 1rem;
+}
+
+.index-grid,
+.candidate-list,
+.bullet-list,
+.metric-grid,
+.breadth-grid,
+.task-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.index-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1rem 0 1.25rem;
+}
+
+.index-card,
+.breadth-card,
+.metric-card,
+.task-card {
+  padding: 1rem;
+}
+
+.index-card p,
+.candidate-copy p,
+.bullet-list,
+.metric-card p,
+.task-card p {
+  margin: 0;
+}
+
+.delta-positive {
+  color: var(--success);
+}
+
+.delta-negative {
+  color: var(--danger);
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.breadth-grid,
+.metric-grid,
+.task-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.candidate-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.candidate-list li {
+  padding: 1rem;
+  border-radius: 1.2rem;
+  background: var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.candidate-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.candidate-symbol {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.candidate-score {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.pill {
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pill.pill-risk {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.task-card[data-status="SUCCESS"] {
+  border-color: rgba(47, 107, 61, 0.18);
+}
+
+.task-card[data-status="WARN"] {
+  border-color: rgba(177, 77, 56, 0.18);
+}
+
+.error-banner {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(177, 77, 56, 0.12);
+  color: var(--danger);
+}
+
+@media (max-width: 980px) {
+  .hero-copy,
+  .dashboard-grid,
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-strip,
+  .index-grid,
+  .breadth-grid,
+  .metric-grid,
+  .task-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .page-shell {
+    padding: 1rem 0.85rem 3rem;
+  }
+
+  .hero-panel,
+  .panel {
+    border-radius: 1.35rem;
+  }
+
+  .hero-meta,
+  .status-strip,
+  .index-grid,
+  .breadth-grid,
+  .metric-grid,
+  .task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 2.8rem;
+  }
+}

@@ -1,0 +1,9 @@
+QuantA domain glossary for agents
+
+- raw_snapshot_id: immutable raw-source snapshot after ingestion
+- snapshot_id: published artifact snapshot visible to downstream readers
+- READY snapshot: published snapshot safe for API and UI reads
+- as-of query: query that reconstructs the latest valid record before or at a target snapshot
+- screener run: one execution of stock selection rules for a target date and snapshot
+- backtest run: one replay of strategy rules bound to explicit raw and artifact snapshots
+- price basis: raw, qfq, hfq, or other explicitly modeled price convention

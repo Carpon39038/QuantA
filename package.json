@@ -1,0 +1,11 @@
+{
+  "name": "quanta",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "backend:dev": "python3 -m backend.app.api.dev_server",
+    "frontend:dev": "python3 scripts/run_frontend.py",
+    "smoke": "scripts/smoke.sh",
+    "app:smoke": "python3 scripts/app_smoke.py"
+  }
+}

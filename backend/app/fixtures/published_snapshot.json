@@ -1,0 +1,115 @@
+{
+  "snapshot_id": "snapshot_2026-03-27_ready_001",
+  "raw_snapshot_id": "raw_snapshot_2026-03-27_close_001",
+  "status": "READY",
+  "generated_at": "2026-03-27T18:10:00+08:00",
+  "price_basis": "qfq",
+  "market_overview": {
+    "trade_date": "2026-03-27",
+    "summary": "主板延续震荡，机器人和高端制造方向重新获得资金关注，北向资金回流后市场情绪从谨慎回到可跟踪。",
+    "regime_label": "震荡偏修复",
+    "snapshot_source": "READY published snapshot",
+    "indices": [
+      {
+        "name": "上证指数",
+        "close": 3348.72,
+        "change_pct": -0.38,
+        "commentary": "权重拖累，尾盘未能收回五日线。"
+      },
+      {
+        "name": "深证成指",
+        "close": 10492.15,
+        "change_pct": 0.24,
+        "commentary": "成长股修复略强于主板。"
+      },
+      {
+        "name": "创业板指",
+        "close": 2198.44,
+        "change_pct": 0.91,
+        "commentary": "高弹性板块提供风险偏好支撑。"
+      }
+    ],
+    "breadth": {
+      "advancers": 2894,
+      "decliners": 2081,
+      "limit_up": 73,
+      "limit_down": 11
+    },
+    "highlights": [
+      "北向资金净流入 28.4 亿元，连续两日改善。",
+      "高位连板压缩，但低位首板与趋势票活跃度抬升。",
+      "成交额回到 1.02 万亿元，仍需确认是否形成有效放量。"
+    ]
+  },
+  "screener": {
+    "strategy_name": "盘后观察名单",
+    "as_of_date": "2026-03-27",
+    "top_candidates": [
+      {
+        "symbol": "300750.SZ",
+        "name": "宁德时代",
+        "score": 92,
+        "thesis": "放量站回关键均线，资金面和趋势结构同步转强。",
+        "signals": [
+          "趋势突破",
+          "量能放大",
+          "北向回流"
+        ],
+        "risks": [
+          "高位震荡未完全结束",
+          "新能源板块轮动持续性待确认"
+        ]
+      },
+      {
+        "symbol": "002475.SZ",
+        "name": "立讯精密",
+        "score": 87,
+        "thesis": "缩量回踩后的再启动形态完整，基本面过滤通过。",
+        "signals": [
+          "缩量回踩",
+          "MACD 二次金叉",
+          "机构关注"
+        ],
+        "risks": [
+          "消费电子景气验证仍需要财报支持"
+        ]
+      },
+      {
+        "symbol": "688017.SH",
+        "name": "绿的谐波",
+        "score": 84,
+        "thesis": "机器人链条情绪回暖时，弹性标的量价共振较强。",
+        "signals": [
+          "主题强度抬升",
+          "涨停打开后承接稳定"
+        ],
+        "risks": [
+          "波动率高",
+          "题材退潮时回撤可能放大"
+        ]
+      }
+    ]
+  },
+  "backtest": {
+    "strategy_name": "趋势突破 + 缩量回踩",
+    "window": "2024-01-02 to 2026-03-27",
+    "metrics": {
+      "cagr_pct": 18.2,
+      "max_drawdown_pct": -11.4,
+      "win_rate_pct": 57.6,
+      "profit_factor": 1.61
+    },
+    "notes": [
+      "成交规则按次日价格执行，已计入 T+1、手续费和印花税。",
+      "组合在指数震荡期回撤可控，但连续热点切换时胜率明显下降。"
+    ]
+  },
+  "task_status": {
+    "data_update": "SUCCESS",
+    "analysis": "SUCCESS",
+    "screener": "SUCCESS",
+    "backtest": "SUCCESS",
+    "last_run": "2026-03-27T18:12:00+08:00",
+    "next_window": "2026-03-30T18:00:00+08:00"
+  }
+}

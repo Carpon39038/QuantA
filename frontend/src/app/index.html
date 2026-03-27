@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QuantA Research Workbench</title>
+    <link rel="stylesheet" href="/main.css" />
+  </head>
+  <body>
+    <div class="canvas-glow canvas-glow-left"></div>
+    <div class="canvas-glow canvas-glow-right"></div>
+    <main class="page-shell">
+      <section class="hero-panel">
+        <p class="eyebrow">Snapshot-first research workbench</p>
+        <div class="hero-copy">
+          <div>
+            <h1>QuantA</h1>
+            <p class="hero-summary">
+              用已发布快照驱动盘后研究、观察名单和回测复盘。
+            </p>
+          </div>
+          <div class="hero-meta" id="hero-meta">
+            <div class="meta-card">
+              <span class="meta-label">加载状态</span>
+              <strong id="load-status">正在拉取发布快照</strong>
+            </div>
+            <div class="meta-card">
+              <span class="meta-label">快照来源</span>
+              <strong id="snapshot-ref">等待后端响应</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="status-strip" id="status-strip"></section>
+
+      <section class="dashboard-grid">
+        <article class="panel panel-large">
+          <div class="panel-header">
+            <p class="panel-kicker">Market Overview</p>
+            <h2>市场概览</h2>
+          </div>
+          <div class="panel-body">
+            <p class="summary-text" id="market-summary"></p>
+            <div class="index-grid" id="index-grid"></div>
+            <div class="split-grid">
+              <div>
+                <h3>市场宽度</h3>
+                <div class="breadth-grid" id="breadth-grid"></div>
+              </div>
+              <div>
+                <h3>今日关注</h3>
+                <ul class="bullet-list" id="highlights-list"></ul>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Screener</p>
+            <h2>观察名单</h2>
+          </div>
+          <div class="panel-body">
+            <ol class="candidate-list" id="candidate-list"></ol>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Backtest</p>
+            <h2>回测摘要</h2>
+          </div>
+          <div class="panel-body">
+            <p class="strategy-name" id="strategy-name"></p>
+            <div class="metric-grid" id="metric-grid"></div>
+            <ul class="bullet-list" id="backtest-notes"></ul>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <p class="panel-kicker">Tasking</p>
+            <h2>运行状态</h2>
+          </div>
+          <div class="panel-body">
+            <div class="task-grid" id="task-grid"></div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

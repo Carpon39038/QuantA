@@ -1,0 +1,95 @@
+{
+  "plan_id": "2026-03-27-m0-execution-harness-bootstrap",
+  "title": "M0 Execution Harness Bootstrap",
+  "status": "active",
+  "updated_at": "2026-03-27",
+  "items": [
+    {
+      "id": "EH-001",
+      "title": "Execution harness artifacts exist and stay structurally valid",
+      "priority": 1,
+      "description": "The active plan, acceptance JSON, and progress handoff are all present and validated by script.",
+      "artifacts": [
+        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.md",
+        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.acceptance.json",
+        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.progress.md",
+        "scripts/check_execution_harness.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/check_execution_harness.py --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "EH-002",
+      "title": "Deterministic init entrypoint exists",
+      "priority": 1,
+      "description": "A new session can run one script to check required commands, validate docs, and print the current acceptance summary.",
+      "artifacts": [
+        "scripts/init_dev.sh"
+      ],
+      "verify_steps": [
+        "scripts/init_dev.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "EH-003",
+      "title": "Smoke entrypoint validates the harness end to end",
+      "priority": 1,
+      "description": "The smoke script validates shell syntax, both harness validation scripts, and the fixture-backed backend/frontend startup chain.",
+      "artifacts": [
+        "scripts/smoke.sh",
+        "scripts/check_harness_docs.py",
+        "scripts/check_execution_harness.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "EH-004",
+      "title": "Core docs explain the long-running workflow",
+      "priority": 2,
+      "description": "Harness and planning docs explain how acceptance, progress, init, smoke, and the completion gate fit together.",
+      "artifacts": [
+        "docs/HARNESS.md",
+        "docs/PLANS.md",
+        "docs/QUALITY_SCORE.md",
+        "docs/exec-plans/tech-debt-tracker.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/check_harness_docs.py",
+        "python3 scripts/check_execution_harness.py --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "EH-005",
+      "title": "Fixture-backed backend and frontend dev skeletons can start",
+      "priority": 1,
+      "description": "QuantA has deterministic backend/frontend dev commands, runtime directory bootstrap, and a snapshot-driven workbench shell that can be exercised by smoke tests.",
+      "artifacts": [
+        "pyproject.toml",
+        "package.json",
+        ".env.example",
+        "backend/app/api/dev_server.py",
+        "backend/app/app_wiring/settings.py",
+        "backend/app/fixtures/published_snapshot.json",
+        "frontend/src/app/index.html",
+        "frontend/src/app/main.css",
+        "frontend/src/app/main.js",
+        "scripts/run_frontend.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "pnpm run backend:dev",
+        "pnpm run frontend:dev",
+        "python3 scripts/app_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}
