@@ -1,0 +1,68 @@
+{
+  "plan_id": "2026-04-01-m6-daily-pipeline-orchestration",
+  "title": "M6 Daily Pipeline Orchestration",
+  "status": "completed",
+  "updated_at": "2026-04-01",
+  "items": [
+    {
+      "id": "M6-001",
+      "title": "Service tasks have explicit stage semantics",
+      "priority": 1,
+      "description": "Task orchestration no longer relies on daily_sync implicitly rebuilding the full world; service execution is split into sync, screener, and backtest stages.",
+      "artifacts": [
+        "backend/app/domains/tasking/service_runner.py",
+        "backend/app/domains/tasking/worker.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M6-002",
+      "title": "Daily backtest is a queue-backed service task",
+      "priority": 1,
+      "description": "Backend exposes a dedicated daily_backtest service trigger and the service worker can consume it to rebuild deterministic backtest artifacts.",
+      "artifacts": [
+        "backend/app/api/dev_server.py",
+        "backend/app/domains/tasking/queue.py",
+        "backend/app/domains/tasking/worker.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M6-003",
+      "title": "Scheduler runs the pipeline in order",
+      "priority": 1,
+      "description": "The scheduler CLI can enqueue and execute the daily pipeline in the intended order, and queue ids preserve chronological processing order.",
+      "artifacts": [
+        "backend/app/domains/tasking/scheduler.py",
+        "backend/app/domains/tasking/queue.py"
+      ],
+      "verify_steps": [
+        "python3 -m backend.app.domains.tasking.scheduler"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M6-004",
+      "title": "Orchestration keeps deterministic baseline after verification",
+      "priority": 2,
+      "description": "Init, smoke, and scheduler verification complete without leaving extra task or backtest rows behind in the dev DuckDB baseline.",
+      "artifacts": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/init_dev.sh",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

@@ -16,6 +16,7 @@ from backend.app.domains.market_data.repo import (
     load_system_health,
     load_task_runs,
 )
+from backend.app.shared.telemetry.alerts import load_recent_alerts
 from backend.app.domains.screener.service import build_screener_summary
 
 
@@ -43,6 +44,8 @@ class QuantAContainer:
                 "data_dir": str(self.settings.data_dir),
                 "duckdb_path": str(self.settings.duckdb_path),
                 "seed_fixture_path": str(self.settings.fixture_path),
+                "alerts_path": str(self.settings.alerts_path),
+                "source_provider": self.settings.source_provider,
             },
         }
 
@@ -187,6 +190,13 @@ class QuantAContainer:
             **payload,
             "backend_origin": self.settings.backend_origin,
             "frontend_origin": self.settings.frontend_origin,
+        }
+
+    def recent_alerts_payload(self, *, limit: int = 20) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            "items": load_recent_alerts(self.settings, limit=limit),
+            "alerts_path": str(self.settings.alerts_path),
         }
 
 

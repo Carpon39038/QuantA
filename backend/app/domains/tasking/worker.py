@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import json
 
-from backend.app.app_wiring.dev_bootstrap import bootstrap_dev_runtime
 from backend.app.app_wiring.settings import AppSettings, load_settings
 from backend.app.domains.backtest.bootstrap import (
     build_backtest_bundle,
@@ -14,15 +13,18 @@ from backend.app.domains.backtest.bootstrap import (
 from backend.app.domains.backtest.queue import (
     move_backtest_queue_item,
     pending_backtest_queue_items,
+    rewrite_backtest_queue_item,
 )
-from backend.app.domains.screener.bootstrap import ensure_screener_artifacts
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.queue import (
     move_service_queue_item,
     pending_service_queue_items,
     replace_service_task_run_log,
+    rewrite_service_queue_item,
 )
+from backend.app.domains.tasking.service_runner import run_service_task
 from backend.app.shared.providers.duckdb import connect_duckdb
+from backend.app.shared.telemetry.alerts import emit_alert
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -40,7 +42,9 @@ def process_backtest_queue(
         "processed": 0,
         "succeeded": 0,
         "failed": 0,
+        "retried": 0,
         "completed_ids": [],
+        "retried_ids": [],
         "failed_ids": [],
     }
 
@@ -56,6 +60,18 @@ def process_backtest_queue(
         try:
             _process_one_backtest_request(settings, queue_item=queue_item, started_at=started_at)
         except Exception as exc:
+            if _retry_backtest_request(
+                settings,
+                queue_item=queue_item,
+                started_at=started_at,
+                error_message=str(exc),
+                processing_path=processing_path,
+            ):
+                summary["processed"] += 1
+                summary["retried"] += 1
+                summary["retried_ids"].append(backtest_id)
+                continue
+
             _mark_backtest_request_failed(
                 settings,
                 queue_item=queue_item,
@@ -63,6 +79,17 @@ def process_backtest_queue(
                 error_message=str(exc),
             )
             move_backtest_queue_item(settings, path=processing_path, target_state="failed")
+            emit_alert(
+                settings,
+                alert_type="backtest_queue_failure",
+                severity="error",
+                message=f"Backtest request {backtest_id} exhausted retries",
+                detail={
+                    "backtest_id": backtest_id,
+                    "error": str(exc),
+                    "snapshot_id": str(queue_item["snapshot_id"]),
+                },
+            )
             summary["processed"] += 1
             summary["failed"] += 1
             summary["failed_ids"].append(backtest_id)
@@ -88,7 +115,9 @@ def process_service_queue(
         "processed": 0,
         "succeeded": 0,
         "failed": 0,
+        "retried": 0,
         "completed_ids": [],
+        "retried_ids": [],
         "failed_ids": [],
     }
 
@@ -104,6 +133,18 @@ def process_service_queue(
         try:
             _process_one_service_request(settings, queue_item=queue_item, started_at=started_at)
         except Exception as exc:
+            if _retry_service_request(
+                settings,
+                queue_item=queue_item,
+                started_at=started_at,
+                error_message=str(exc),
+                processing_path=processing_path,
+            ):
+                summary["processed"] += 1
+                summary["retried"] += 1
+                summary["retried_ids"].append(task_id)
+                continue
+
             _mark_service_request_failed(
                 settings,
                 queue_item=queue_item,
@@ -111,6 +152,18 @@ def process_service_queue(
                 error_message=str(exc),
             )
             move_service_queue_item(settings, path=processing_path, target_state="failed")
+            emit_alert(
+                settings,
+                alert_type="service_queue_failure",
+                severity="error",
+                message=f"Service task {task_id} exhausted retries",
+                detail={
+                    "task_id": task_id,
+                    "task_name": str(queue_item["task_name"]),
+                    "error": str(exc),
+                    "snapshot_id": str(queue_item["snapshot_id"]),
+                },
+            )
             summary["processed"] += 1
             summary["failed"] += 1
             summary["failed_ids"].append(task_id)
@@ -225,7 +278,7 @@ def _process_one_service_request(
         task_name=task_name,
         biz_date=biz_date,
         snapshot_id=snapshot_id,
-        attempt_no=1,
+        attempt_no=int(queue_item.get("retry_count", 0)) + 1,
         status="RUNNING",
         started_at=started_at,
         finished_at=started_at,
@@ -235,20 +288,21 @@ def _process_one_service_request(
         },
     )
 
-    if task_name == "daily_sync":
-        execution_summary = bootstrap_dev_runtime(settings)
-    elif task_name == "daily_screener":
-        execution_summary = ensure_screener_artifacts(settings)
-    else:
-        raise ValueError(f"Unsupported service task: {task_name}")
+    execution_summary = run_service_task(
+        settings,
+        task_name=task_name,
+        snapshot_id=snapshot_id if task_name != "daily_sync" else None,
+    )
+    resolved_snapshot_id = str(execution_summary.get("snapshot_id", snapshot_id))
+    resolved_biz_date = str(execution_summary.get("biz_date", biz_date))
 
     replace_service_task_run_log(
         settings,
         task_id=task_id,
         task_name=task_name,
-        biz_date=biz_date,
-        snapshot_id=snapshot_id,
-        attempt_no=1,
+        biz_date=resolved_biz_date,
+        snapshot_id=resolved_snapshot_id,
+        attempt_no=int(queue_item.get("retry_count", 0)) + 1,
         status="SUCCESS",
         started_at=started_at,
         finished_at=_now_isoformat(),
@@ -313,6 +367,73 @@ def _mark_backtest_request_failed(
         connection.close()
 
 
+def _retry_backtest_request(
+    settings: AppSettings,
+    *,
+    queue_item: dict[str, object],
+    started_at: str,
+    error_message: str,
+    processing_path,
+) -> bool:
+    retry_state = _build_retry_state(settings, queue_item=queue_item)
+    if retry_state is None:
+        return False
+
+    backtest_id = str(queue_item["backtest_id"])
+    snapshot_id = str(queue_item["snapshot_id"])
+    raw_snapshot_id = str(queue_item["raw_snapshot_id"])
+    signal_price_basis = str(queue_item["signal_price_basis"])
+    strategy_version = str(queue_item["strategy_version"])
+    requested_at = str(queue_item["requested_at"])
+    biz_date = str(queue_item["biz_date"])
+    payload = queue_item.get("payload")
+    payload_dict = payload if isinstance(payload, dict) else {}
+
+    queue_item.update(retry_state)
+    queue_item["last_error"] = error_message
+
+    connection = connect_duckdb(settings.duckdb_path)
+    try:
+        retry_count = int(retry_state["retry_count"])
+        upsert_backtest_request_row(
+            connection,
+            backtest_id=backtest_id,
+            requested_at=requested_at,
+            snapshot_id=snapshot_id,
+            raw_snapshot_id=raw_snapshot_id,
+            strategy_version=strategy_version,
+            signal_price_basis=signal_price_basis,
+            payload_json=payload_dict,
+            status="RETRY_WAIT",
+            retry_count=retry_count,
+            last_error=error_message,
+        )
+        _replace_task_run_log(
+            connection,
+            task_id=f"{backtest_id}:worker",
+            task_name="backtest_worker",
+            biz_date=biz_date,
+            snapshot_id=snapshot_id,
+            attempt_no=retry_count,
+            status="RETRY_WAIT",
+            started_at=started_at,
+            finished_at=_now_isoformat(),
+            detail={
+                "backtest_id": backtest_id,
+                "error": error_message,
+                "queue_source": "durable_file_queue",
+                "next_attempt_at": retry_state["next_attempt_at"],
+                "retry_count": retry_count,
+            },
+        )
+    finally:
+        connection.close()
+
+    pending_path = move_backtest_queue_item(settings, path=processing_path, target_state="pending")
+    rewrite_backtest_queue_item(settings, path=pending_path, queue_item=queue_item)
+    return True
+
+
 def _mark_service_request_failed(
     settings: AppSettings,
     *,
@@ -332,7 +453,7 @@ def _mark_service_request_failed(
         task_name=task_name,
         biz_date=biz_date,
         snapshot_id=snapshot_id,
-        attempt_no=1,
+        attempt_no=int(queue_item.get("retry_count", 0)) + 1,
         status="FAILED",
         started_at=started_at,
         finished_at=_now_isoformat(),
@@ -342,6 +463,45 @@ def _mark_service_request_failed(
             "error": error_message,
         },
     )
+
+
+def _retry_service_request(
+    settings: AppSettings,
+    *,
+    queue_item: dict[str, object],
+    started_at: str,
+    error_message: str,
+    processing_path,
+) -> bool:
+    retry_state = _build_retry_state(settings, queue_item=queue_item)
+    if retry_state is None:
+        return False
+
+    queue_item.update(retry_state)
+    queue_item["last_error"] = error_message
+    retry_count = int(retry_state["retry_count"])
+    replace_service_task_run_log(
+        settings,
+        task_id=str(queue_item["task_id"]),
+        task_name=str(queue_item["task_name"]),
+        biz_date=str(queue_item["biz_date"]),
+        snapshot_id=str(queue_item["snapshot_id"]),
+        attempt_no=retry_count,
+        status="RETRY_WAIT",
+        started_at=started_at,
+        finished_at=_now_isoformat(),
+        detail={
+            "queue_source": "durable_file_queue",
+            "requested_at": str(queue_item["requested_at"]),
+            "error": error_message,
+            "next_attempt_at": retry_state["next_attempt_at"],
+            "retry_count": retry_count,
+        },
+    )
+
+    pending_path = move_service_queue_item(settings, path=processing_path, target_state="pending")
+    rewrite_service_queue_item(settings, path=pending_path, queue_item=queue_item)
+    return True
 
 
 def _fetch_backtest_retry_count(connection, *, backtest_id: str) -> int:
@@ -355,6 +515,27 @@ def _fetch_backtest_retry_count(connection, *, backtest_id: str) -> int:
         [backtest_id],
     ).fetchone()
     return int(row[0]) if row is not None else 0
+
+
+def _build_retry_state(
+    settings: AppSettings,
+    *,
+    queue_item: dict[str, object],
+) -> dict[str, object] | None:
+    current_retry_count = int(queue_item.get("retry_count", 0))
+    max_retries = int(queue_item.get("max_retries", settings.task_max_retries))
+    if current_retry_count >= max_retries:
+        return None
+
+    next_retry_count = current_retry_count + 1
+    delay_seconds = settings.task_retry_backoff_seconds * (2 ** (next_retry_count - 1))
+    next_attempt_at = (
+        datetime.now(CN_TZ) + timedelta(seconds=delay_seconds)
+    ).isoformat(timespec="seconds")
+    return {
+        "retry_count": next_retry_count,
+        "next_attempt_at": next_attempt_at,
+    }
 
 
 def _replace_task_run_log(
@@ -371,6 +552,15 @@ def _replace_task_run_log(
     detail: dict[str, object],
 ) -> None:
     connection.execute("DELETE FROM task_run_log WHERE task_id = ?", [task_id])
+    if status == "SUCCESS":
+        error_code = None
+        error_message = None
+    elif status == "RETRY_WAIT":
+        error_code = "retry_wait"
+        error_message = str(detail.get("error")) if detail.get("error") is not None else None
+    else:
+        error_code = "worker_error"
+        error_message = str(detail.get("error")) if detail.get("error") is not None else None
     connection.execute(
         """
         INSERT INTO task_run_log (
@@ -394,8 +584,8 @@ def _replace_task_run_log(
             snapshot_id,
             attempt_no,
             status,
-            None if status == "SUCCESS" else "worker_error",
-            None if status == "SUCCESS" else str(detail.get("error")),
+            error_code,
+            error_message,
             started_at,
             finished_at,
             json.dumps(detail, ensure_ascii=False),
@@ -412,9 +602,14 @@ def _print_summary(summary: dict[str, object]) -> None:
     print(f"- processed: {summary['processed']}")
     print(f"- succeeded: {summary['succeeded']}")
     print(f"- failed: {summary['failed']}")
+    print(f"- retried: {summary['retried']}")
     print(
         "- completed_ids:",
         ", ".join(summary["completed_ids"]) if summary["completed_ids"] else "none",
+    )
+    print(
+        "- retried_ids:",
+        ", ".join(summary["retried_ids"]) if summary["retried_ids"] else "none",
     )
     print(
         "- failed_ids:",

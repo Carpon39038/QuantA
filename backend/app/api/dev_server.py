@@ -224,6 +224,8 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         "data_dir": str(container.settings.data_dir),
                         "duckdb_path": str(container.settings.duckdb_path),
                         "seed_fixture_path": str(container.settings.fixture_path),
+                        "alerts_path": str(container.settings.alerts_path),
+                        "source_provider": container.settings.source_provider,
                     },
                 )
                 return
@@ -239,6 +241,16 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
 
             if parsed.path == "/api/v1/system/health":
                 self._send_json(200, container.system_health_payload())
+                return
+
+            if parsed.path == "/api/v1/system/alerts":
+                limit = _query_value(query, "limit")
+                self._send_json(
+                    200,
+                    container.recent_alerts_payload(
+                        limit=int(limit) if limit is not None else 20,
+                    ),
+                )
                 return
 
             self._send_json(404, {"error": "not_found", "path": parsed.path})
@@ -282,6 +294,35 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                     queued_task = enqueue_service_task(
                         container.settings,
                         task_name="daily_screener",
+                        snapshot_id=_query_value(query, "snapshot_id")
+                        or _body_value(body, "snapshot_id"),
+                    )
+                    self._send_json(
+                        202,
+                        {
+                            "status": "accepted",
+                            "task": queued_task,
+                        },
+                    )
+                    return
+                except LookupError as exc:
+                    self._send_json(
+                        404,
+                        {"error": "not_found", "message": str(exc)},
+                    )
+                    return
+                except ValueError as exc:
+                    self._send_json(
+                        400,
+                        {"error": "bad_request", "message": str(exc)},
+                    )
+                    return
+
+            if parsed.path == "/api/v1/tasks/daily-backtest/run":
+                try:
+                    queued_task = enqueue_service_task(
+                        container.settings,
+                        task_name="daily_backtest",
                         snapshot_id=_query_value(query, "snapshot_id")
                         or _body_value(body, "snapshot_id"),
                     )

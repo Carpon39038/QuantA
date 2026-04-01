@@ -100,6 +100,55 @@ def ensure_backtest_artifacts(settings: AppSettings) -> dict[str, object]:
     }
 
 
+def materialize_backtest_snapshot(
+    connection,
+    *,
+    snapshot_id: str,
+    raw_snapshot_id: str,
+    biz_date: str,
+    price_basis: str,
+    requested_at: str,
+    top_n: int = 2,
+    strategy_version: str = SEED_STRATEGY_VERSION,
+    backtest_id: str | None = None,
+    created_from: str = "daily_pipeline",
+) -> dict[str, object] | None:
+    bundle = build_backtest_bundle(
+        connection,
+        backtest_id=backtest_id or _seed_backtest_id(snapshot_id),
+        snapshot_id=snapshot_id,
+        raw_snapshot_id=raw_snapshot_id,
+        biz_date=biz_date,
+        price_basis=price_basis,
+        requested_at=requested_at,
+        top_n=top_n,
+        strategy_version=strategy_version,
+        created_from=created_from,
+    )
+    if bundle is None:
+        return None
+
+    upsert_backtest_request_row(
+        connection,
+        backtest_id=str(bundle["backtest_id"]),
+        requested_at=str(bundle["requested_at"]),
+        snapshot_id=str(bundle["snapshot_id"]),
+        raw_snapshot_id=str(bundle["raw_snapshot_id"]),
+        strategy_version=str(bundle["strategy_version"]),
+        signal_price_basis=str(bundle["signal_price_basis"]),
+        payload_json=dict(bundle["request_payload"]),
+        status=str(bundle["status"]),
+        retry_count=0,
+        last_error=None,
+    )
+    row_counts = replace_backtest_materialization(connection, bundle=bundle)
+    return {
+        "backtest_id": str(bundle["backtest_id"]),
+        "request": 1,
+        **row_counts,
+    }
+
+
 def build_backtest_bundle(
     connection,
     *,

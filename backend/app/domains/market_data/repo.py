@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.app.app_wiring.settings import AppSettings
 from backend.app.shared.providers.duckdb import connect_duckdb
+from backend.app.shared.telemetry.alerts import load_recent_alerts
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -1946,8 +1947,10 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
             "raw_snapshot_id": latest_snapshot["raw_snapshot_id"],
             "published_at": latest_snapshot["published_at"],
             "duckdb_path": str(settings.duckdb_path),
+            "alerts_path": str(settings.alerts_path),
             "table_counts": table_counts,
             "task_count": task_count,
+            "alert_count": len(load_recent_alerts(settings, limit=200)),
         }
     finally:
         connection.close()

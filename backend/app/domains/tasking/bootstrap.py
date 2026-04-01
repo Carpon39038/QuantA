@@ -9,6 +9,7 @@ def ensure_runtime_directories(settings: AppSettings) -> dict[str, str]:
         "duckdb_dir": settings.duckdb_dir,
         "logs_dir": settings.logs_dir,
         "queue_dir": settings.queue_dir,
+        "alerts_dir": settings.alerts_path.parent,
     }
 
     for path in runtime_paths.values():

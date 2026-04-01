@@ -146,6 +146,110 @@ def ensure_screener_artifacts(settings: AppSettings) -> dict[str, object]:
     }
 
 
+def materialize_screener_snapshot(
+    connection,
+    *,
+    snapshot_id: str,
+    raw_snapshot_id: str,
+    biz_date: str,
+    price_basis: str,
+    published_at: str,
+) -> dict[str, object]:
+    candidates = _build_snapshot_candidates(
+        connection,
+        snapshot_id=snapshot_id,
+        raw_snapshot_id=raw_snapshot_id,
+        biz_date=biz_date,
+        price_basis=price_basis,
+    )
+    run_id = f"screener_run_{snapshot_id.replace('-', '_')}"
+
+    connection.execute("DELETE FROM screener_result WHERE run_id = ?", [run_id])
+    connection.execute("DELETE FROM screener_run WHERE run_id = ?", [run_id])
+    connection.execute(
+        """
+        INSERT INTO screener_run (
+          run_id,
+          trade_date,
+          snapshot_id,
+          strategy_name,
+          strategy_version,
+          signal_price_basis,
+          universe_size,
+          result_count,
+          status,
+          as_of_date,
+          started_at,
+          finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            run_id,
+            biz_date,
+            snapshot_id,
+            "三策略候选池",
+            "m3-dev-001",
+            price_basis,
+            len(candidates["universe"]),
+            len(candidates["results"]),
+            "SUCCESS",
+            biz_date,
+            published_at,
+            published_at,
+        ],
+    )
+
+    inserted_result_count = 0
+    for rank_no, result in enumerate(candidates["results"], start=1):
+        connection.execute(
+            """
+            INSERT INTO screener_result (
+              run_id,
+              symbol,
+              trade_date,
+              strategy_name,
+              snapshot_id,
+              signal_price_basis,
+              total_score,
+              trend_score,
+              price_volume_score,
+              capital_score,
+              fundamental_score,
+              display_name,
+              thesis,
+              matched_rules_json,
+              risk_flags_json,
+              rank_no
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                run_id,
+                result["symbol"],
+                biz_date,
+                result["strategy_name"],
+                snapshot_id,
+                price_basis,
+                result["total_score"],
+                result["trend_score"],
+                result["price_volume_score"],
+                result["capital_score"],
+                result["fundamental_score"],
+                result["display_name"],
+                result["thesis"],
+                json.dumps(result["matched_rules"], ensure_ascii=False),
+                json.dumps(result["risk_flags"], ensure_ascii=False),
+                rank_no,
+            ],
+        )
+        inserted_result_count += 1
+
+    return {
+        "run_id": run_id,
+        "screener_run": 1,
+        "screener_result": inserted_result_count,
+    }
+
+
 def _build_snapshot_candidates(
     connection,
     *,

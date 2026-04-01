@@ -17,8 +17,10 @@ if str(ROOT) not in sys.path:
 
 from backend.app.app_wiring.settings import load_settings
 from backend.app.domains.backtest.queue import delete_backtest_request_artifacts
+from backend.app.domains.market_data.sync import delete_snapshot_artifacts
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.queue import delete_service_task_artifacts
+from backend.app.shared.providers.duckdb import connect_duckdb
 
 
 def find_free_port() -> int:
@@ -109,6 +111,41 @@ def run_checked_command(command: list[str], env: dict[str, str]) -> subprocess.C
     )
 
 
+def fetch_task_log(settings, *, task_id: str) -> dict[str, object]:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+              task_id,
+              task_name,
+              biz_date,
+              snapshot_id,
+              attempt_no,
+              status,
+              detail_json
+            FROM task_run_log
+            WHERE task_id = ?
+            LIMIT 1
+            """,
+            [task_id],
+        ).fetchone()
+        if row is None:
+            raise LookupError(f"Unknown task_id: {task_id}")
+        task_id_value, task_name, biz_date, snapshot_id, attempt_no, status, detail_json = row
+        return {
+            "task_id": str(task_id_value),
+            "task_name": str(task_name),
+            "biz_date": str(biz_date),
+            "snapshot_id": str(snapshot_id),
+            "attempt_no": int(attempt_no),
+            "status": str(status),
+            "detail": json.loads(detail_json) if detail_json else {},
+        }
+    finally:
+        connection.close()
+
+
 def main() -> int:
     settings = load_settings()
     ensure_runtime_directories(settings)
@@ -141,6 +178,8 @@ def main() -> int:
     frontend = None
     queued_backtest_id: str | None = None
     queued_service_task_ids: list[str] = []
+    pipeline_snapshot_id: str | None = None
+    pipeline_raw_snapshot_id: str | None = None
 
     try:
         wait_for("backend health", f"{backend_origin}/health")
@@ -188,21 +227,49 @@ def main() -> int:
         )
         task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
         system_health_payload = fetch_json(f"{frontend_origin}/api/v1/system/health")
+        alerts_payload = fetch_json(f"{backend_origin}/api/v1/system/alerts")
         daily_sync_post_payload = post_json(f"{backend_origin}/api/v1/tasks/daily-sync/run")
-        daily_screener_post_payload = post_json(f"{backend_origin}/api/v1/tasks/daily-screener/run")
-        queued_service_task_ids.extend(
-            [
-                str(daily_sync_post_payload["task"]["task_id"]),
-                str(daily_screener_post_payload["task"]["task_id"]),
-            ]
-        )
+        queued_service_task_ids.append(str(daily_sync_post_payload["task"]["task_id"]))
         queued_task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
-        service_worker_run = run_checked_command(
-            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "2"],
+        queued_tasks_by_id = {
+            str(item["task_id"]): item for item in queued_task_runs_payload["items"]
+        }
+        sync_worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "1"],
+            env,
+        )
+        sync_task_payload = fetch_task_log(
+            settings,
+            task_id=str(daily_sync_post_payload["task"]["task_id"]),
+        )
+        pipeline_snapshot_id = str(sync_task_payload["detail"]["execution_summary"]["snapshot_id"])
+        pipeline_raw_snapshot_id = str(
+            sync_task_payload["detail"]["execution_summary"]["raw_snapshot_id"]
+        )
+
+        daily_screener_post_payload = post_json(
+            f"{backend_origin}/api/v1/tasks/daily-screener/run",
+            {"snapshot_id": pipeline_snapshot_id},
+        )
+        queued_service_task_ids.append(str(daily_screener_post_payload["task"]["task_id"]))
+        screener_worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "1"],
+            env,
+        )
+
+        daily_backtest_post_payload = post_json(
+            f"{backend_origin}/api/v1/tasks/daily-backtest/run",
+            {"snapshot_id": pipeline_snapshot_id},
+        )
+        queued_service_task_ids.append(str(daily_backtest_post_payload["task"]["task_id"]))
+        backtest_service_worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "1"],
             env,
         )
         processed_task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
+        refreshed_snapshot_payload = fetch_json(f"{backend_origin}/api/v1/snapshot/latest")
         refreshed_screener_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
+        refreshed_service_backtest_payload = fetch_json(f"{backend_origin}/api/v1/backtests/runs/latest")
         backtest_post_payload = post_json(
             f"{backend_origin}/api/v1/backtests/runs",
             {"top_n": 3},
@@ -225,6 +292,7 @@ def main() -> int:
         assert backend_payload["snapshot_id"] == frontend_proxy_payload["snapshot_id"]
         assert backend_payload["market_overview"]["trade_date"] == "2026-03-27"
         assert backend_payload["runtime"]["duckdb_path"].endswith("quanta.duckdb")
+        assert backend_payload["runtime"]["source_provider"] == "fixture_json"
         assert backend_payload["task_status"]["data_update"] == "SUCCESS"
         assert backend_payload["screener"]["strategy_name"] == "三策略候选池"
         assert len(backend_payload["screener"]["top_candidates"]) >= 3
@@ -298,18 +366,24 @@ def main() -> int:
         assert system_health_payload["snapshot_id"] == backend_payload["snapshot_id"]
         assert system_health_payload["task_count"] == len(task_runs_payload["items"])
         assert system_health_payload["table_counts"]["backtest_trade"] >= 4
+        assert system_health_payload["alert_count"] == 0
+        assert alerts_payload["items"] == []
         assert daily_sync_post_payload["status"] == "accepted"
         assert daily_sync_post_payload["task"]["task_name"] == "daily_sync"
         assert daily_sync_post_payload["task"]["status"] == "PENDING"
+        assert queued_tasks_by_id[str(daily_sync_post_payload["task"]["task_id"])]["status"] == "PENDING"
+        assert "processed: 1" in sync_worker_run.stdout
+        assert sync_task_payload["status"] == "SUCCESS"
+        assert pipeline_snapshot_id is not None
+        assert pipeline_raw_snapshot_id is not None
         assert daily_screener_post_payload["status"] == "accepted"
         assert daily_screener_post_payload["task"]["task_name"] == "daily_screener"
         assert daily_screener_post_payload["task"]["status"] == "PENDING"
-        queued_tasks_by_id = {
-            str(item["task_id"]): item for item in queued_task_runs_payload["items"]
-        }
-        for task_id in queued_service_task_ids:
-            assert queued_tasks_by_id[task_id]["status"] == "PENDING"
-        assert "processed: 2" in service_worker_run.stdout
+        assert "processed: 1" in screener_worker_run.stdout
+        assert daily_backtest_post_payload["status"] == "accepted"
+        assert daily_backtest_post_payload["task"]["task_name"] == "daily_backtest"
+        assert daily_backtest_post_payload["task"]["status"] == "PENDING"
+        assert "processed: 1" in backtest_service_worker_run.stdout
         processed_tasks_by_id = {
             str(item["task_id"]): item for item in processed_task_runs_payload["items"]
         }
@@ -319,7 +393,12 @@ def main() -> int:
                 processed_tasks_by_id[task_id]["detail"]["queue_source"]
                 == "durable_file_queue"
             )
-        assert refreshed_screener_payload["run_id"] == screener_latest_payload["run_id"]
+        assert refreshed_snapshot_payload["snapshot_id"] == pipeline_snapshot_id
+        assert refreshed_snapshot_payload["market_overview"]["trade_date"] == "2026-03-31"
+        assert refreshed_screener_payload["snapshot_id"] == pipeline_snapshot_id
+        assert refreshed_screener_payload["run_id"] != screener_latest_payload["run_id"]
+        assert refreshed_service_backtest_payload["snapshot_id"] == pipeline_snapshot_id
+        assert refreshed_service_backtest_payload["backtest_id"] != backtest_latest_payload["backtest_id"]
         assert backtest_post_payload["status"] == "accepted"
         assert backtest_post_payload["backtest"]["status"] == "PENDING"
         assert backtest_post_payload["backtest"]["payload"]["top_n"] == 3
@@ -352,6 +431,12 @@ def main() -> int:
         stop_process(backend)
         if queued_backtest_id:
             delete_backtest_request_artifacts(settings, backtest_id=queued_backtest_id)
+        if pipeline_snapshot_id and pipeline_raw_snapshot_id:
+            delete_snapshot_artifacts(
+                settings,
+                snapshot_id=pipeline_snapshot_id,
+                raw_snapshot_id=pipeline_raw_snapshot_id,
+            )
         for task_id in queued_service_task_ids:
             delete_service_task_artifacts(settings, task_id=task_id)
 

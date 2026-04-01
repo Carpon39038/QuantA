@@ -11,6 +11,7 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 3. 查询只读已发布快照，避免读到半成品。
 4. 每次任务都要留下 run log 和失败原因。
 5. 回测必须绑定快照和策略版本，避免“结果漂移”。
+6. `daily_sync` 产生的 source-backed snapshot 在 `screener/backtest` 完成前必须保持 `BUILDING`，不能被查询侧当成最终发布结果。
 
 ## Planned Operational Signals
 
@@ -20,18 +21,27 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 4. 关键任务耗时
 5. 失败重试次数
 
+## Current Guardrails
+
+1. `daily_sync` 会先写 `raw_snapshot` 与 `artifact_publish(status=BUILDING)`，再由 `daily_screener`、`daily_backtest` 逐步把产物状态推进到 `READY`。
+2. service queue 与 backtest queue 都带 `retry_count`、`max_retries`、`next_attempt_at`、`last_error`，worker 会按指数 backoff 重试。
+3. 重试耗尽时会把失败写入 `data/logs/alerts.jsonl`，并通过 `/api/v1/system/alerts` 暴露最近告警。
+4. `domains.tasking.scheduler` 既能跑有限 tick 的 pipeline，也能以 resident loop 方式持续轮询。
+5. `scripts/pipeline_smoke.py` 会在临时 runtime 验证成功路径和 retry 路径，避免把失败恢复逻辑只留在对话里。
+
 ## Known Risks
 
-1. 外部数据源字段漂移
-2. 单机 DuckDB 读写争用
-3. 复权和涨跌停规则实现错误
-4. 回测成交假设过于理想化
+1. 真实外部数据源字段漂移和限流仍可能让 `akshare` provider 失效。
+2. 单机 DuckDB 读写争用仍需要靠“单写者优先”和顺序 smoke 避免。
+3. 当前 source-backed sync 还没有覆盖全市场、复权修复和企业行为回补。
+4. 回测成交假设仍偏理想化，尚未引入更真实的滑点和撮合约束。
 
 ## Guardrail Direction
 
 后续优先把这些风险编码成检查：
 
 1. 数据质量校验
-2. 快照发布前验收
-3. 样例回测回放测试
-4. 任务失败告警
+2. source provider 字段标准化与 schema 断言
+3. 快照发布前验收
+4. 样例回测回放测试
+5. 本地 alerts 到远端通知通道的桥接

@@ -1,0 +1,91 @@
+{
+  "plan_id": "2026-04-01-m7-real-sync-reliability",
+  "title": "M7 Real Sync And Reliability",
+  "status": "completed",
+  "updated_at": "2026-04-01",
+  "items": [
+    {
+      "id": "M7-001",
+      "title": "Source-backed sync creates BUILDING snapshots",
+      "priority": 1,
+      "description": "daily_sync no longer only replays deterministic publish rows. It consumes a source snapshot, writes a new raw_snapshot, and opens a BUILDING artifact publish for downstream stages.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "backend/app/domains/market_data/sync.py",
+        "backend/app/domains/tasking/service_runner.py"
+      ],
+      "verify_steps": [
+        "scripts/pipeline_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M7-002",
+      "title": "Scheduler can auto-drive BUILDING to READY",
+      "priority": 1,
+      "description": "The scheduler can detect pending pipeline work, enqueue the next stage, and settle the latest source-backed snapshot all the way to READY.",
+      "artifacts": [
+        "backend/app/domains/tasking/scheduler.py",
+        "backend/app/domains/tasking/queue.py",
+        "scripts/pipeline_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/pipeline_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M7-003",
+      "title": "Queues support retry and backoff",
+      "priority": 1,
+      "description": "Service and backtest queue items now persist retry metadata, workers reschedule failed work with backoff, and run logs reflect retry_wait semantics before final success or failure.",
+      "artifacts": [
+        "backend/app/domains/tasking/queue.py",
+        "backend/app/domains/backtest/queue.py",
+        "backend/app/domains/tasking/worker.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/pipeline_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M7-004",
+      "title": "Alerts are visible from runtime and API",
+      "priority": 2,
+      "description": "Retry exhaustion now writes local alerts, runtime health reports alert count, and the backend exposes recent alerts via a dedicated endpoint.",
+      "artifacts": [
+        "backend/app/shared/telemetry/alerts.py",
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M7-005",
+      "title": "System record reflects the new reliability baseline",
+      "priority": 2,
+      "description": "README, harness docs, reliability notes, quality score, and tech debt all describe source-backed sync, retry/backoff, alerts, and resident scheduling as repository facts.",
+      "artifacts": [
+        "backend/app/README.md",
+        "docs/HARNESS.md",
+        "docs/RELIABILITY.md",
+        "docs/QUALITY_SCORE.md",
+        "docs/exec-plans/tech-debt-tracker.md",
+        ".env.example"
+      ],
+      "verify_steps": [
+        "python3 scripts/check_harness_docs.py",
+        "python3 scripts/check_execution_harness.py --require-all-passing"
+      ],
+      "passes": true
+    }
+  ]
+}

@@ -73,6 +73,25 @@ Types -> Config -> Repo -> Service -> Runtime/API
 6. `Providers`
    连接外部世界的显式入口，例如 AKShare、腾讯行情、通知、日志、遥测。
 
+## Formal Source Strategy
+
+为了把 QuantA 的 v1.0 做成“可交付、可复现、可运维”的盘后研究系统，正式数据源按 `canonical -> official disclosure -> supplementary -> future licensed realtime` 四层管理：
+
+1. `Canonical structured source`
+   盘后结构化主数据、交易日历、日线、复权因子、每日指标、涨跌停价、停复牌、龙虎榜、资金流等核心表，优先使用有明确账号体系、文档和调用门槛的结构化服务，当前默认收敛到 `Tushare Pro`。
+2. `Official disclosure source`
+   公告、公开信息、披露日历、问询与交易所公开信息，优先使用法定或官方平台，例如 `巨潮资讯`、`上交所`、`深交所`。
+3. `Supplementary adapter source`
+   `AKShare` 继续保留为正式支持的数据采集适配器之一，但在 v1.0 中主要承担补充、验证、缺口兜底和快速探索职责，而不是单独作为核心持久化表的唯一 canonical source。
+4. `Future licensed realtime source`
+   分钟级、实时快照、Level-1/Level-2 和更严格授权场景，后续再接入有明确许可和收费标准的商业服务，例如交易所行情授权或 Choice 量化接口。
+
+当前明确排除项：
+
+1. 不把无公开文档、无稳定授权边界的网页内部接口直接当作核心持久化表的 canonical source。
+2. 不让 query/read path 直接依赖随时可能被风控或封控的隐藏上游接口。
+3. 不把盘中试验性行情源直接混入盘后回测和 READY snapshot 发布链。
+
 ## Core Data Flow
 
 ```mermaid
@@ -97,6 +116,7 @@ flowchart LR
 4. 回测记录同时绑定 `raw_snapshot_id` 和 `snapshot_id`。
 5. 任务链路必须可重跑、可追踪、可解释。
 6. 能写成规则的约束，尽量不要只写成口头偏好。
+7. 每类核心数据集必须有单一 `canonical source`，允许补充源，但不能在发布时混淆主责来源。
 
 ## Source Documents
 

@@ -66,6 +66,10 @@ def enqueue_backtest_request(
         "signal_price_basis": str(published_snapshot["price_basis"]),
         "strategy_version": QUEUE_STRATEGY_VERSION,
         "payload": payload,
+        "retry_count": 0,
+        "max_retries": settings.task_max_retries,
+        "next_attempt_at": requested_at,
+        "last_error": None,
     }
     queue_path = write_backtest_queue_item(
         settings,
@@ -81,6 +85,7 @@ def enqueue_backtest_request(
         "raw_snapshot_id": str(published_snapshot["raw_snapshot_id"]),
         "signal_price_basis": str(published_snapshot["price_basis"]),
         "payload": payload,
+        "retry_count": 0,
         "queue_path": str(queue_path),
     }
 
@@ -95,7 +100,17 @@ def pending_backtest_queue_items(
     paths = sorted(pending_dir.glob("*.json"))
     if limit is not None:
         paths = paths[:limit]
-    return [(path, json.loads(path.read_text(encoding="utf-8"))) for path in paths]
+    now_value = datetime.now(CN_TZ)
+    items: list[tuple[Path, dict[str, object]]] = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        next_attempt_at = payload.get("next_attempt_at")
+        if isinstance(next_attempt_at, str) and datetime.fromisoformat(next_attempt_at) > now_value:
+            continue
+        items.append((path, payload))
+        if limit is not None and len(items) >= limit:
+            break
+    return items
 
 
 def move_backtest_queue_item(
@@ -125,6 +140,19 @@ def write_backtest_queue_item(
         encoding="utf-8",
     )
     return queue_path
+
+
+def rewrite_backtest_queue_item(
+    settings: AppSettings,
+    *,
+    path: Path,
+    queue_item: dict[str, object],
+) -> Path:
+    path.write_text(
+        json.dumps(queue_item, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def delete_backtest_request_artifacts(

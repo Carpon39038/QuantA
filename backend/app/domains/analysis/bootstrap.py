@@ -133,6 +133,57 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
     }
 
 
+def materialize_analysis_snapshot(
+    connection,
+    *,
+    snapshot_id: str,
+    price_basis: str,
+    updated_at: str,
+) -> dict[str, int]:
+    series_rows = _load_price_series_asof_rows(
+        connection,
+        snapshot_id=snapshot_id,
+        price_basis=price_basis,
+    )
+    grouped_rows = _group_rows_by_symbol(series_rows)
+    indicator_rows = _build_indicator_rows(
+        grouped_rows,
+        snapshot_id=snapshot_id,
+        price_basis=price_basis,
+        updated_at=updated_at,
+    )
+    capital_rows = _build_capital_feature_rows(
+        grouped_rows,
+        snapshot_id=snapshot_id,
+        updated_at=updated_at,
+    )
+    pattern_rows = _build_pattern_signal_rows(
+        grouped_rows,
+        indicator_rows,
+        snapshot_id=snapshot_id,
+        price_basis=price_basis,
+        updated_at=updated_at,
+    )
+
+    connection.execute("DELETE FROM indicator_daily WHERE snapshot_id = ?", [snapshot_id])
+    connection.execute("DELETE FROM pattern_signal_daily WHERE snapshot_id = ?", [snapshot_id])
+    connection.execute("DELETE FROM capital_feature_daily WHERE snapshot_id = ?", [snapshot_id])
+
+    return {
+        "indicator_daily": _insert_rows(connection, "indicator_daily", indicator_rows),
+        "pattern_signal_daily": _insert_rows(
+            connection,
+            "pattern_signal_daily",
+            pattern_rows,
+        ),
+        "capital_feature_daily": _insert_rows(
+            connection,
+            "capital_feature_daily",
+            capital_rows,
+        ),
+    }
+
+
 def _load_price_series_asof_rows(
     connection,
     *,

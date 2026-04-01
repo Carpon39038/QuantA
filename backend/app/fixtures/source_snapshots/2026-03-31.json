@@ -1,0 +1,122 @@
+{
+  "source": "fixture-json-market-feed",
+  "biz_date": "2026-03-31",
+  "fetched_at": "2026-04-01T18:05:00+08:00",
+  "price_basis": "qfq",
+  "source_watermark": {
+    "daily_bar": "2026-03-31T15:30:00+08:00",
+    "fixture_batch": "source-snapshot-2026-03-31"
+  },
+  "trade_calendar": {
+    "trade_date": "2026-03-31",
+    "market_code": "CN-A",
+    "is_open": true
+  },
+  "stock_basic": [
+    {
+      "symbol": "300750.SZ",
+      "display_name": "宁德时代",
+      "exchange": "SZ",
+      "board": "创业板",
+      "industry": "电力设备",
+      "is_active": true
+    },
+    {
+      "symbol": "002475.SZ",
+      "display_name": "立讯精密",
+      "exchange": "SZ",
+      "board": "主板",
+      "industry": "消费电子",
+      "is_active": true
+    },
+    {
+      "symbol": "688017.SH",
+      "display_name": "绿的谐波",
+      "exchange": "SH",
+      "board": "科创板",
+      "industry": "机器人",
+      "is_active": true
+    }
+  ],
+  "daily_bars": [
+    {
+      "symbol": "300750.SZ",
+      "trade_date": "2026-03-31",
+      "open_raw": 266.8,
+      "high_raw": 272.5,
+      "low_raw": 265.2,
+      "close_raw": 271.3,
+      "pre_close_raw": 266.4,
+      "volume": 18234567,
+      "amount": 4912356000,
+      "turnover_rate": 2.6,
+      "high_limit": 319.68,
+      "low_limit": 213.12,
+      "limit_rule_code": "GEM20",
+      "is_suspended": false
+    },
+    {
+      "symbol": "002475.SZ",
+      "trade_date": "2026-03-31",
+      "open_raw": 34.21,
+      "high_raw": 35.18,
+      "low_raw": 34.02,
+      "close_raw": 34.97,
+      "pre_close_raw": 34.12,
+      "volume": 25678901,
+      "amount": 892341200,
+      "turnover_rate": 1.9,
+      "high_limit": 37.53,
+      "low_limit": 30.71,
+      "limit_rule_code": "MAIN10",
+      "is_suspended": false
+    },
+    {
+      "symbol": "688017.SH",
+      "trade_date": "2026-03-31",
+      "open_raw": 162.4,
+      "high_raw": 167.8,
+      "low_raw": 161.9,
+      "close_raw": 166.7,
+      "pre_close_raw": 161.5,
+      "volume": 5342109,
+      "amount": 875123400,
+      "turnover_rate": 3.4,
+      "high_limit": 193.8,
+      "low_limit": 129.2,
+      "limit_rule_code": "STAR20",
+      "is_suspended": false
+    }
+  ],
+  "market_overview": {
+    "trade_date": "2026-03-31",
+    "summary": "新能源与机器人方向延续强势，市场修复延续但分化仍在。",
+    "regime_label": "修复上行",
+    "snapshot_source": "fixture real-sync snapshot",
+    "indices": [
+      {
+        "name": "上证指数",
+        "change_pct": 0.82
+      },
+      {
+        "name": "深证成指",
+        "change_pct": 1.34
+      },
+      {
+        "name": "创业板指",
+        "change_pct": 1.92
+      }
+    ],
+    "breadth": {
+      "advancers": 3312,
+      "decliners": 1417,
+      "limit_up": 84,
+      "limit_down": 7
+    },
+    "highlights": [
+      "宁德时代与机器人链条继续放量上攻",
+      "北向与主力净流入同步改善",
+      "高位股分化加大，追高需控仓"
+    ]
+  }
+}
