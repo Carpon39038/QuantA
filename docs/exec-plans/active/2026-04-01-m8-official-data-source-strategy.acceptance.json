@@ -8,7 +8,7 @@
       "id": "M8-001",
       "title": "Canonical structured source is explicitly defined",
       "priority": 1,
-      "description": "The repo clearly states which source owns the core structured post-close tables for v1.0.",
+      "description": "The repo clearly states which source owns the core structured post-close tables for v1.0, and that the default implementation target is the Tushare Pro 2000-point tier rather than a 5000-point VIP assumption.",
       "artifacts": [
         "ARCHITECTURE.md",
         "backend/app/README.md",
@@ -35,9 +35,9 @@
     },
     {
       "id": "M8-003",
-      "title": "AKShare role is narrowed without contradicting source docs",
+      "title": "AKShare and BaoStock roles are narrowed without contradicting source docs",
       "priority": 2,
-      "description": "AKShare remains a formal supported source adapter, but the repo no longer implies that hidden upstream endpoints should serve as the sole canonical persistence source.",
+      "description": "AKShare and BaoStock remain formal supported source adapters, but the repo no longer implies that supplemental adapters or their hidden upstream endpoints should serve as the sole canonical persistence source.",
       "artifacts": [
         "backend/app/README.md",
         "docs/exec-plans/active/2026-04-01-m8-official-data-source-strategy.md",
