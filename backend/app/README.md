@@ -38,8 +38,8 @@
 7. `daily_sync` 已改成真正的 source-backed sync：会先写 `raw_snapshot` 与 `artifact_publish(status=BUILDING)`，再由 `daily_screener`、`daily_backtest` 逐步补齐产物并最终发布为 `READY`。
 8. service/backtest durable queue 现已带 `retry_count`、`max_retries`、`next_attempt_at` 与 `last_error`，worker 会执行 retry/backoff，并在耗尽时写本地 alerts JSONL。
 9. 已提供最小 `domains.tasking.scheduler` resident loop，可轮询 auto pipeline，并通过 `scripts/pipeline_smoke.py` 覆盖成功路径与 retry 路径。
-10. 当前正式数据源口径已经收敛为 `Tushare Pro 2000积分档 + 巨潮资讯/上交所/深交所 + AKShare/BaoStock补充层`。
-11. `Tushare Pro 2000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`，以及条件允许时的 `moneyflow_hsgt`。
-12. 全市场季度财务 `*_vip` 接口不再作为 v1.0 默认前提；财务过滤先按“候选池后拉取”或“分批缓存”设计。
+10. 当前正式数据源口径已经收敛为 `Tushare Pro 5000积分档 + 巨潮资讯/上交所/深交所 + AKShare/BaoStock补充层`。
+11. `Tushare Pro 5000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
+12. 全市场季度财务过滤现在回到 v1.0 默认前提，可以直接进入正式选股主链，而不必先降级成“候选池后拉取”。
 13. 当前 `akshare.stock_zh_a_hist` 这条历史日线路径底层会依赖其上游公开行情接口；仓库已接入 AKShare provider，但 live fetch 是否成功仍取决于当前机器的代理/网络环境以及 AKShare 上游链路状态。
 14. 后续继续把正式数据源安装、全量历史回补、远端告警通道和更完整的产品 API 替换进这套底座。

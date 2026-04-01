@@ -78,7 +78,7 @@ Types -> Config -> Repo -> Service -> Runtime/API
 为了把 QuantA 的 v1.0 做成“可交付、可复现、可运维”的盘后研究系统，正式数据源按 `canonical -> official disclosure -> supplementary -> future licensed realtime` 四层管理：
 
 1. `Canonical structured source`
-   盘后结构化主数据、交易日历、日线、复权因子、每日指标、涨跌停价、停复牌、龙虎榜、资金流等核心表，优先使用有明确账号体系、文档和调用门槛的结构化服务，当前默认收敛到 `Tushare Pro 2000积分档`。
+   盘后结构化主数据、交易日历、日线、复权因子、每日指标、涨跌停价、停复牌、龙虎榜、资金流，以及全市场季度财务过滤所需结构化表，优先使用有明确账号体系、文档和调用门槛的结构化服务，当前默认收敛到 `Tushare Pro 5000积分档`。
 2. `Official disclosure source`
    公告、公开信息、披露日历、问询与交易所公开信息，优先使用法定或官方平台，例如 `巨潮资讯`、`上交所`、`深交所`。
 3. `Supplementary adapter source`
@@ -92,16 +92,16 @@ Types -> Config -> Repo -> Service -> Runtime/API
 2. 不让 query/read path 直接依赖随时可能被风控或封控的隐藏上游接口。
 3. 不把盘中试验性行情源直接混入盘后回测和 READY snapshot 发布链。
 
-### Tushare 2000 Scope
+### Tushare 5000 Scope
 
-当前 v1.0 的正式口径不要求 `Tushare Pro 5000`，而是先按 `2000积分档` 设计 canonical 表：
+当前 v1.0 的正式口径默认按 `Tushare Pro 5000积分档` 设计 canonical 表：
 
 1. 必须覆盖：
-   `stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`，以及条件允许时的 `moneyflow_hsgt`。
-2. 可以降级：
-   全市场季度财务过滤、全市场一次性 `*_vip` 财报拉取、分钟级历史、公告正文下载。
-3. 降级策略：
-   财务过滤先改成“候选池后拉取”或“分批缓存”，公告和披露改走 `巨潮资讯/上交所/深交所` 官方源，分钟数据留到后续授权实时层。
+   `stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
+2. 可以后置：
+   分钟级历史、公告正文下载、盘中实时快照。
+3. 约束：
+   公告和披露仍改走 `巨潮资讯/上交所/深交所` 官方源，分钟数据留到后续授权实时层；但 v1.0 默认允许把全市场季度财务过滤放进正式主链，而不是只做候选池后拉取。
 
 ## Core Data Flow
 
@@ -128,7 +128,7 @@ flowchart LR
 5. 任务链路必须可重跑、可追踪、可解释。
 6. 能写成规则的约束，尽量不要只写成口头偏好。
 7. 每类核心数据集必须有单一 `canonical source`，允许补充源，但不能在发布时混淆主责来源。
-8. v1.0 默认实现必须以 `Tushare Pro 2000积分档可达能力` 为基线，不能隐式依赖 `5000积分 VIP` 才存在的全市场财务接口。
+8. v1.0 默认实现必须以 `Tushare Pro 5000积分档可达能力` 为基线，允许直接把全市场季度财务过滤纳入正式主链。
 
 ## Source Documents
 

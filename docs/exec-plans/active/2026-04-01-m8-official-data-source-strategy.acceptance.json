@@ -8,7 +8,7 @@
       "id": "M8-001",
       "title": "Canonical structured source is explicitly defined",
       "priority": 1,
-      "description": "The repo clearly states which source owns the core structured post-close tables for v1.0, and that the default implementation target is the Tushare Pro 2000-point tier rather than a 5000-point VIP assumption.",
+      "description": "The repo clearly states which source owns the core structured post-close tables for v1.0, and that the default implementation target is the Tushare Pro 5000-point tier with full-market quarterly financial coverage available in the mainline design.",
       "artifacts": [
         "ARCHITECTURE.md",
         "backend/app/README.md",
