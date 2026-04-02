@@ -317,6 +317,23 @@ def _build_snapshot_candidates(
           WHERE cf.trade_date = CAST(? AS DATE)
             AND cf.snapshot_id = ?
         ),
+        latest_fundamental AS (
+          SELECT
+            ff.symbol,
+            ff.report_period,
+            ff.fundamental_score,
+            ff.debt_to_assets,
+            ff.cash_to_profit,
+            ROW_NUMBER() OVER (
+              PARTITION BY ff.symbol, ff.trade_date
+              ORDER BY ap.publish_seq DESC
+            ) AS row_num
+          FROM fundamental_feature_daily ff
+          JOIN artifact_publish ap
+            ON ap.snapshot_id = ff.snapshot_id
+          WHERE ff.trade_date = CAST(? AS DATE)
+            AND ff.snapshot_id = ?
+        ),
         pattern_signals AS (
           SELECT
             ps.symbol,
@@ -342,6 +359,10 @@ def _build_snapshot_candidates(
           lc.main_net_inflow_ratio,
           lc.northbound_net_inflow,
           lc.has_dragon_tiger,
+          lf.report_period,
+          lf.fundamental_score,
+          lf.debt_to_assets,
+          lf.cash_to_profit,
           COALESCE(ps.signal_codes, []) AS signal_codes
         FROM stock_basic sb
         JOIN latest_bar lb
@@ -353,6 +374,9 @@ def _build_snapshot_candidates(
         JOIN latest_capital lc
           ON lc.symbol = sb.symbol
          AND lc.row_num = 1
+        LEFT JOIN latest_fundamental lf
+          ON lf.symbol = sb.symbol
+         AND lf.row_num = 1
         LEFT JOIN pattern_signals ps
           ON ps.symbol = sb.symbol
         WHERE sb.is_active = TRUE
@@ -364,6 +388,8 @@ def _build_snapshot_candidates(
             biz_date,
             snapshot_id,
             price_basis,
+            biz_date,
+            snapshot_id,
             biz_date,
             snapshot_id,
             biz_date,
@@ -390,6 +416,10 @@ def _build_snapshot_candidates(
         main_net_inflow_ratio,
         northbound_net_inflow,
         has_dragon_tiger,
+        report_period,
+        canonical_fundamental_score,
+        debt_to_assets,
+        cash_to_profit,
         signal_codes,
     ) in universe_rows:
         if is_suspended:
@@ -415,10 +445,15 @@ def _build_snapshot_candidates(
             + max(float(main_net_inflow_ratio or 0.0), 0.0) * 8000.0
             + max(float(northbound_net_inflow or 0.0), 0.0) / 5_000_000.0
         )
-        fundamental_score = _clamp_score(
+        heuristic_fundamental_score = _clamp_score(
             62.0
             - (6.0 if bool(has_dragon_tiger) else 0.0)
             - (4.0 if float(rsi6 or 50.0) >= 82.0 else 0.0)
+        )
+        fundamental_score = _clamp_score(
+            float(canonical_fundamental_score)
+            if canonical_fundamental_score is not None
+            else heuristic_fundamental_score
         )
 
         strategy_candidates = []
@@ -462,6 +497,12 @@ def _build_snapshot_candidates(
             matched_rules.append("main_inflow_positive")
         if float(northbound_net_inflow or 0.0) > 0:
             matched_rules.append("northbound_positive")
+        if canonical_fundamental_score is not None:
+            matched_rules.append("fundamental_canonical")
+        if report_period is not None:
+            matched_rules.append(f"financial_period:{report_period}")
+        if float(fundamental_score or 0.0) >= 70.0:
+            matched_rules.append("fundamental_quality_positive")
 
         risk_flags: list[str] = []
         if bool(has_dragon_tiger):
@@ -470,6 +511,15 @@ def _build_snapshot_candidates(
             risk_flags.append("短线过热")
         if float(volume_ratio or 1.0) >= 1.45:
             risk_flags.append("放量过快")
+        if debt_to_assets is not None and float(debt_to_assets) >= 65.0:
+            risk_flags.append("资产负债率偏高")
+        if cash_to_profit is not None and float(cash_to_profit) < 0.8:
+            risk_flags.append("现金流弱于利润")
+        if (
+            canonical_fundamental_score is not None
+            and float(canonical_fundamental_score) < 45.0
+        ):
+            risk_flags.append("财务质量偏弱")
 
         thesis = _build_thesis(
             strategy_name=str(strategy_name),

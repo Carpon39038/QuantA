@@ -1,0 +1,70 @@
+{
+  "plan_id": "2026-04-02-m10-tushare-vip-fundamental-sidecar",
+  "title": "M10 Tushare VIP Fundamental Sidecar",
+  "status": "active",
+  "updated_at": "2026-04-02",
+  "items": [
+    {
+      "id": "M10-001",
+      "title": "VIP financial provider data can be normalized into current sync inputs",
+      "priority": 1,
+      "description": "The Tushare provider resolves a recent financial report period and maps fina_indicator_vip/income_vip/balancesheet_vip/cashflow_vip into normalized fundamental overrides.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "scripts/tushare_provider_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M10-002",
+      "title": "Analysis sync materializes a canonical financial sidecar table",
+      "priority": 1,
+      "description": "The analysis and sync path materializes fundamental_feature_daily with snapshot-bound financial metrics and scores.",
+      "artifacts": [
+        "backend/app/domains/market_data/schema.py",
+        "backend/app/domains/market_data/sync.py",
+        "backend/app/domains/analysis/bootstrap.py",
+        "docs/generated/db-schema.md"
+      ],
+      "verify_steps": [
+        "python3 scripts/render_db_schema.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M10-003",
+      "title": "Screener consumes canonical financial scores when available",
+      "priority": 1,
+      "description": "The screener joins fundamental_feature_daily and prefers canonical financial scores while preserving heuristic fallback when no financial sidecar exists.",
+      "artifacts": [
+        "backend/app/domains/screener/bootstrap.py",
+        "scripts/smoke.sh"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M10-004",
+      "title": "Harness and docs stay healthy after the financial-sidecar expansion",
+      "priority": 2,
+      "description": "The new financial sidecar work updates repository docs and does not break the existing harness checks.",
+      "artifacts": [
+        "backend/app/README.md",
+        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.md",
+        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.progress.md",
+        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.acceptance.json"
+      ],
+      "verify_steps": [
+        "python3 scripts/check_harness_docs.py",
+        "python3 scripts/check_execution_harness.py --require-all-passing"
+      ],
+      "passes": true
+    }
+  ]
+}

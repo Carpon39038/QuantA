@@ -185,6 +185,30 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | symbol, trade_date, snapshot_id |
 
+### `fundamental_feature_daily`
+
+股票日级财务特征聚合结果，供选股读取 canonical 财务侧信号。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 交易日; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `report_period` | `DATE` | 财报报告期; nullable |
+| `ann_date` | `DATE` | 公告日期; nullable |
+| `roe_dt` | `DOUBLE` | 扣非 ROE; nullable |
+| `grossprofit_margin` | `DOUBLE` | 毛利率; nullable |
+| `debt_to_assets` | `DOUBLE` | 资产负债率; nullable |
+| `total_revenue` | `DOUBLE` | 营业总收入; nullable |
+| `net_profit_attr_p` | `DOUBLE` | 归母净利润; nullable |
+| `n_cashflow_act` | `DOUBLE` | 经营活动现金流净额; nullable |
+| `total_assets` | `DOUBLE` | 总资产; nullable |
+| `total_liab` | `DOUBLE` | 总负债; nullable |
+| `cash_to_profit` | `DOUBLE` | 经营现金流与归母净利润比; nullable |
+| `fundamental_score` | `DOUBLE` | 财务综合分; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | symbol, trade_date, snapshot_id |
+
 ### `market_regime_daily`
 
 市场概览页读取的聚合市场状态。

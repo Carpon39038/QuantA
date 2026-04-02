@@ -25,6 +25,9 @@ python3 -m backend.app.domains.screener.bootstrap --print-summary
 echo "[smoke] backtest artifacts"
 python3 -m backend.app.domains.backtest.bootstrap --print-summary
 
+echo "[smoke] tushare provider mapping"
+python3 "$ROOT/scripts/tushare_provider_smoke.py"
+
 echo "[smoke] scheduler and retry paths"
 python3 "$ROOT/scripts/pipeline_smoke.py"
 

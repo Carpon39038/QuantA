@@ -1,0 +1,69 @@
+{
+  "plan_id": "2026-04-02-m9-tushare-canonical-provider",
+  "title": "M9 Tushare Canonical Provider",
+  "status": "active",
+  "updated_at": "2026-04-02",
+  "items": [
+    {
+      "id": "M9-001",
+      "title": "Runtime can construct a Tushare provider",
+      "priority": 1,
+      "description": "App settings and provider wiring support source_provider=tushare with explicit token-based configuration.",
+      "artifacts": [
+        "backend/app/app_wiring/settings.py",
+        "backend/app/shared/providers/market_data_source.py",
+        ".env.example"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M9-002",
+      "title": "Tushare snapshot fields map into current sync contract",
+      "priority": 1,
+      "description": "The provider maps Tushare stock_basic/trade_cal/daily/daily_basic/stk_limit fields into MarketDataSnapshot and current sync expectations.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "backend/app/domains/market_data/sync.py",
+        "scripts/tushare_provider_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M9-003",
+      "title": "Tushare capital sidecars feed the current analysis path",
+      "priority": 1,
+      "description": "The provider normalizes moneyflow/top_list/moneyflow_hsgt into capital-feature sidecars, source watermark fields, and market overview highlights that the current analysis sync can consume without new tables.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "backend/app/domains/analysis/bootstrap.py",
+        "backend/app/domains/market_data/sync.py",
+        "scripts/tushare_provider_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M9-004",
+      "title": "Default fixture-based smoke still passes",
+      "priority": 2,
+      "description": "The new Tushare path does not break the existing fixture_json-based development loop or app smoke.",
+      "artifacts": [
+        "scripts/smoke.sh",
+        "scripts/tushare_provider_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

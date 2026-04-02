@@ -21,6 +21,14 @@ def _parse_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer, got {raw_value!r}") from exc
 
 
+def _parse_optional_str(name: str) -> str | None:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return None
+    normalized = raw_value.strip()
+    return normalized or None
+
+
 def _resolve_runtime_path(root_dir: Path, raw_path: str) -> Path:
     path = Path(raw_path)
     if path.is_absolute():
@@ -41,6 +49,8 @@ class AppSettings:
     source_fixture_dir: Path
     source_provider: str
     source_symbols: tuple[str, ...]
+    tushare_token: str | None
+    tushare_exchange: str
     source_fail_first_n: int
     task_max_retries: int
     task_retry_backoff_seconds: int
@@ -100,6 +110,8 @@ def load_settings() -> AppSettings:
         ),
         source_provider=os.environ.get("QUANTA_SOURCE_PROVIDER", "fixture_json"),
         source_symbols=source_symbols,
+        tushare_token=_parse_optional_str("QUANTA_TUSHARE_TOKEN"),
+        tushare_exchange=os.environ.get("QUANTA_TUSHARE_EXCHANGE", "SSE"),
         source_fail_first_n=_parse_int("QUANTA_SOURCE_FAIL_FIRST_N", 0),
         task_max_retries=_parse_int("QUANTA_TASK_MAX_RETRIES", 2),
         task_retry_backoff_seconds=_parse_int(

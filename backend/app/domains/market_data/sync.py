@@ -130,6 +130,7 @@ def sync_market_data(
                         "indicator_daily",
                         "pattern_signal_daily",
                         "capital_feature_daily",
+                        "fundamental_feature_daily",
                         "screener_run",
                         "screener_result",
                         "backtest_request",
@@ -147,6 +148,7 @@ def sync_market_data(
                         "indicator_daily": "PENDING",
                         "pattern_signal_daily": "PENDING",
                         "capital_feature_daily": "PENDING",
+                        "fundamental_feature_daily": "PENDING",
                         "screener_run": "PENDING",
                         "screener_result": "PENDING",
                         "backtest_request": "PENDING",
@@ -179,6 +181,8 @@ def sync_market_data(
             snapshot_id=snapshot_id,
             price_basis=source_snapshot.price_basis,
             updated_at=published_at,
+            capital_feature_overrides=source_snapshot.capital_feature_overrides,
+            fundamental_feature_overrides=source_snapshot.fundamental_feature_overrides,
         )
         _update_artifact_publish_status(
             connection,
@@ -190,6 +194,7 @@ def sync_market_data(
                 "indicator_daily": "READY",
                 "pattern_signal_daily": "READY",
                 "capital_feature_daily": "READY",
+                "fundamental_feature_daily": "READY",
                 "screener_run": "PENDING",
                 "screener_result": "PENDING",
                 "backtest_request": "PENDING",
@@ -316,6 +321,7 @@ def delete_snapshot_artifacts(
         connection.execute("DELETE FROM indicator_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM pattern_signal_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM capital_feature_daily WHERE snapshot_id = ?", [snapshot_id])
+        connection.execute("DELETE FROM fundamental_feature_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM market_regime_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM artifact_publish WHERE snapshot_id = ?", [snapshot_id])

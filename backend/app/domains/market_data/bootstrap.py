@@ -68,6 +68,16 @@ REQUIRED_SCHEMA_COLUMNS = {
         "has_dragon_tiger",
         "updated_at",
     },
+    "fundamental_feature_daily": {
+        "report_period",
+        "ann_date",
+        "roe_dt",
+        "grossprofit_margin",
+        "debt_to_assets",
+        "cash_to_profit",
+        "fundamental_score",
+        "updated_at",
+    },
     "screener_result": {
         "trend_score",
         "price_volume_score",

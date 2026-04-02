@@ -26,11 +26,12 @@
 9. `python3 -m backend.app.domains.analysis.bootstrap --print-summary`
 10. `python3 -m backend.app.domains.screener.bootstrap --print-summary`
 11. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
+12. `python3 scripts/tushare_provider_smoke.py`
 
 当前行为已升级为 `source-backed DuckDB dev foundation`：
 
 1. 本地 runtime 会在 `data/duckdb/quanta.duckdb` 初始化最小 schema。
-2. 当前默认使用 `fixture_json` source provider，从 `backend/app/fixtures/source_snapshots/` 读取“可复现的外部数据源快照”；同时已接入 `akshare` 作为正式支持的 source adapter 之一。
+2. 当前默认使用 `fixture_json` source provider，从 `backend/app/fixtures/source_snapshots/` 读取“可复现的外部数据源快照”；同时已接入 `tushare`、`akshare` 作为正式支持的 source provider / adapter。
 3. startup 会按 `market_data -> analysis -> screener -> backtest` 顺序完成最小 dev bootstrap；repo 查询使用 DuckDB 只读连接，避免写时副作用。
 4. 已提供 stock detail 入口：`/api/v1/stocks/{symbol}/snapshot`、`/api/v1/stocks/{symbol}/kline`、`/api/v1/stocks/{symbol}/indicators`、`/api/v1/stocks/{symbol}/capital-flow`。
 5. 已提供 screener/backtest detail 入口：`/api/v1/screener/runs/latest`、`/api/v1/screener/runs/{run_id}`、`/api/v1/backtests/runs/latest`、`/api/v1/backtests/runs/{backtest_id}`。
@@ -42,4 +43,6 @@
 11. `Tushare Pro 5000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
 12. 全市场季度财务过滤现在回到 v1.0 默认前提，可以直接进入正式选股主链，而不必先降级成“候选池后拉取”。
 13. 当前 `akshare.stock_zh_a_hist` 这条历史日线路径底层会依赖其上游公开行情接口；仓库已接入 AKShare provider，但 live fetch 是否成功仍取决于当前机器的代理/网络环境以及 AKShare 上游链路状态。
-14. 后续继续把正式数据源安装、全量历史回补、远端告警通道和更完整的产品 API 替换进这套底座。
+14. `tushare` provider 当前已覆盖 `stock_basic`、`trade_calendar`、`daily`、`daily_basic`、`stk_limit`，并会把 `moneyflow`、`top_list`、`moneyflow_hsgt` 归一成 `capital_feature_daily` 可消费的 sidecar overrides、source watermark 与 market overview highlights。
+15. `tushare` provider 现已把 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip` 归一成 `fundamental_feature_daily`，让 screener 可以直接读取 canonical 财务分，而不再只用启发式 `fundamental_score`。
+16. 后续继续把 live token 验证、全量历史回补、官方披露 adapter、远端告警通道和更完整的产品 API 替换进这套底座。

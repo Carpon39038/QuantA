@@ -1922,6 +1922,7 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
                 "indicator_daily",
                 "pattern_signal_daily",
                 "capital_feature_daily",
+                "fundamental_feature_daily",
                 "screener_run",
                 "screener_result",
                 "backtest_request",

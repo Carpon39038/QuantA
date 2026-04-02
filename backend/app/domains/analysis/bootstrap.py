@@ -27,16 +27,19 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
         connection.execute("DELETE FROM indicator_daily")
         connection.execute("DELETE FROM pattern_signal_daily")
         connection.execute("DELETE FROM capital_feature_daily")
+        connection.execute("DELETE FROM fundamental_feature_daily")
 
         inserted = {
             "indicator_daily": 0,
             "pattern_signal_daily": 0,
             "capital_feature_daily": 0,
+            "fundamental_feature_daily": 0,
         }
 
         previous_indicator_rows: dict[tuple[str, str, str], dict[str, object]] = {}
         previous_pattern_rows: dict[tuple[str, str, str, str], dict[str, object]] = {}
         previous_capital_rows: dict[tuple[str, str], dict[str, object]] = {}
+        previous_fundamental_rows: dict[tuple[str, str], dict[str, object]] = {}
 
         for snapshot_id, _, price_basis, published_at in snapshot_rows:
             series_rows = _load_price_series_asof_rows(
@@ -53,6 +56,11 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
                 updated_at=str(published_at),
             )
             capital_rows = _build_capital_feature_rows(
+                grouped_rows,
+                snapshot_id=str(snapshot_id),
+                updated_at=str(published_at),
+            )
+            fundamental_rows = _build_fundamental_feature_rows(
                 grouped_rows,
                 snapshot_id=str(snapshot_id),
                 updated_at=str(published_at),
@@ -83,6 +91,12 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
                 key_fields=("symbol", "trade_date", "price_basis", "signal_code"),
                 ignore_fields=("snapshot_id", "updated_at"),
             )
+            delta_fundamental_rows = _diff_rows(
+                rows=fundamental_rows,
+                previous_rows=previous_fundamental_rows,
+                key_fields=("symbol", "trade_date"),
+                ignore_fields=("snapshot_id", "updated_at"),
+            )
 
             inserted["indicator_daily"] += _insert_rows(
                 connection,
@@ -98,6 +112,11 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
                 connection,
                 "pattern_signal_daily",
                 delta_pattern_rows,
+            )
+            inserted["fundamental_feature_daily"] += _insert_rows(
+                connection,
+                "fundamental_feature_daily",
+                delta_fundamental_rows,
             )
 
             previous_indicator_rows = {
@@ -115,6 +134,10 @@ def ensure_analysis_artifacts(settings: AppSettings) -> dict[str, object]:
                     str(row["signal_code"]),
                 ): row
                 for row in pattern_rows
+            }
+            previous_fundamental_rows = {
+                (str(row["symbol"]), str(row["trade_date"])): row
+                for row in fundamental_rows
             }
 
         table_counts = {
@@ -139,6 +162,8 @@ def materialize_analysis_snapshot(
     snapshot_id: str,
     price_basis: str,
     updated_at: str,
+    capital_feature_overrides: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
+    fundamental_feature_overrides: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
 ) -> dict[str, int]:
     series_rows = _load_price_series_asof_rows(
         connection,
@@ -156,6 +181,13 @@ def materialize_analysis_snapshot(
         grouped_rows,
         snapshot_id=snapshot_id,
         updated_at=updated_at,
+        capital_feature_overrides=capital_feature_overrides,
+    )
+    fundamental_rows = _build_fundamental_feature_rows(
+        grouped_rows,
+        snapshot_id=snapshot_id,
+        updated_at=updated_at,
+        fundamental_feature_overrides=fundamental_feature_overrides,
     )
     pattern_rows = _build_pattern_signal_rows(
         grouped_rows,
@@ -168,6 +200,7 @@ def materialize_analysis_snapshot(
     connection.execute("DELETE FROM indicator_daily WHERE snapshot_id = ?", [snapshot_id])
     connection.execute("DELETE FROM pattern_signal_daily WHERE snapshot_id = ?", [snapshot_id])
     connection.execute("DELETE FROM capital_feature_daily WHERE snapshot_id = ?", [snapshot_id])
+    connection.execute("DELETE FROM fundamental_feature_daily WHERE snapshot_id = ?", [snapshot_id])
 
     return {
         "indicator_daily": _insert_rows(connection, "indicator_daily", indicator_rows),
@@ -180,6 +213,11 @@ def materialize_analysis_snapshot(
             connection,
             "capital_feature_daily",
             capital_rows,
+        ),
+        "fundamental_feature_daily": _insert_rows(
+            connection,
+            "fundamental_feature_daily",
+            fundamental_rows,
         ),
     }
 
@@ -412,8 +450,13 @@ def _build_capital_feature_rows(
     *,
     snapshot_id: str,
     updated_at: str,
+    capital_feature_overrides: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
+    override_by_key = {
+        (str(item["symbol"]), str(item["trade_date"])): dict(item)
+        for item in (capital_feature_overrides or [])
+    }
 
     for symbol, series in grouped_rows.items():
         for row in series:
@@ -430,20 +473,90 @@ def _build_capital_feature_rows(
             large_order_inflow = main_net_inflow * 0.81
             northbound_net_inflow = amount * change_pct * 0.04
 
-            rows.append(
-                {
-                    "symbol": symbol,
-                    "trade_date": str(row["trade_date"]),
-                    "snapshot_id": snapshot_id,
-                    "main_net_inflow": float(main_net_inflow),
-                    "main_net_inflow_ratio": float(main_net_inflow / amount) if amount else 0.0,
-                    "super_large_order_inflow": float(super_large_order_inflow),
-                    "large_order_inflow": float(large_order_inflow),
-                    "northbound_net_inflow": float(northbound_net_inflow),
-                    "has_dragon_tiger": bool(abs(change_pct) >= 0.095 or amount >= 1_000_000_000.0),
-                    "updated_at": updated_at,
-                }
-            )
+            base_row = {
+                "symbol": symbol,
+                "trade_date": str(row["trade_date"]),
+                "snapshot_id": snapshot_id,
+                "main_net_inflow": float(main_net_inflow),
+                "main_net_inflow_ratio": float(main_net_inflow / amount) if amount else 0.0,
+                "super_large_order_inflow": float(super_large_order_inflow),
+                "large_order_inflow": float(large_order_inflow),
+                "northbound_net_inflow": float(northbound_net_inflow),
+                "has_dragon_tiger": bool(abs(change_pct) >= 0.095 or amount >= 1_000_000_000.0),
+                "updated_at": updated_at,
+            }
+            override = override_by_key.get((symbol, str(row["trade_date"])))
+            if override is not None:
+                for field_name in (
+                    "main_net_inflow",
+                    "main_net_inflow_ratio",
+                    "super_large_order_inflow",
+                    "large_order_inflow",
+                    "northbound_net_inflow",
+                    "has_dragon_tiger",
+                ):
+                    if field_name in override and override[field_name] is not None:
+                        base_row[field_name] = override[field_name]
+
+            rows.append(base_row)
+
+    return rows
+
+
+def _build_fundamental_feature_rows(
+    grouped_rows: dict[str, list[dict[str, object]]],
+    *,
+    snapshot_id: str,
+    updated_at: str,
+    fundamental_feature_overrides: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    override_by_key = {
+        (str(item["symbol"]), str(item["trade_date"])): dict(item)
+        for item in (fundamental_feature_overrides or [])
+    }
+
+    for symbol, series in grouped_rows.items():
+        for row in series:
+            base_row = {
+                "symbol": symbol,
+                "trade_date": str(row["trade_date"]),
+                "snapshot_id": snapshot_id,
+                "report_period": None,
+                "ann_date": None,
+                "roe_dt": None,
+                "grossprofit_margin": None,
+                "debt_to_assets": None,
+                "total_revenue": None,
+                "net_profit_attr_p": None,
+                "n_cashflow_act": None,
+                "total_assets": None,
+                "total_liab": None,
+                "cash_to_profit": None,
+                "fundamental_score": None,
+                "updated_at": updated_at,
+            }
+
+            override = override_by_key.get((symbol, str(row["trade_date"])))
+            if override is not None:
+                for field_name in (
+                    "report_period",
+                    "ann_date",
+                    "roe_dt",
+                    "grossprofit_margin",
+                    "debt_to_assets",
+                    "total_revenue",
+                    "net_profit_attr_p",
+                    "n_cashflow_act",
+                    "total_assets",
+                    "total_liab",
+                    "cash_to_profit",
+                    "fundamental_score",
+                ):
+                    if field_name in override:
+                        base_row[field_name] = override[field_name]
+
+            rows.append(base_row)
 
     return rows
 
