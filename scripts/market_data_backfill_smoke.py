@@ -336,6 +336,7 @@ def main() -> int:
             os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir
             os.environ["QUANTA_DUCKDB_PATH"] = str(Path(temp_dir) / "duckdb" / "quanta.duckdb")
             os.environ["QUANTA_SOURCE_PROVIDER"] = "tushare"
+            os.environ["QUANTA_DISCLOSURE_PROVIDER"] = "none"
             os.environ["QUANTA_TUSHARE_TOKEN"] = "demo-token"
             os.environ["QUANTA_TUSHARE_EXCHANGE"] = "SSE"
             os.environ["QUANTA_SOURCE_SYMBOLS"] = "300750.SZ,002475.SZ"
@@ -417,6 +418,7 @@ def _env_keys() -> tuple[str, ...]:
         "QUANTA_RUNTIME_DATA_DIR",
         "QUANTA_DUCKDB_PATH",
         "QUANTA_SOURCE_PROVIDER",
+        "QUANTA_DISCLOSURE_PROVIDER",
         "QUANTA_TUSHARE_TOKEN",
         "QUANTA_TUSHARE_EXCHANGE",
         "QUANTA_SOURCE_SYMBOLS",

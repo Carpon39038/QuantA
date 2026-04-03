@@ -209,6 +209,30 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | symbol, trade_date, snapshot_id |
 
+### `official_disclosure_item`
+
+官方披露元数据 sidecar，供个股页和公告读口读取。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 公告日期; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `announcement_id` | `VARCHAR` | 公告标识; required |
+| `org_id` | `VARCHAR` | 巨潮机构标识; required |
+| `title` | `VARCHAR` | 公告标题; required |
+| `short_title` | `VARCHAR` | 公告简称; nullable |
+| `announcement_time` | `TIMESTAMP` | 公告时间; nullable |
+| `announcement_type` | `VARCHAR` | 公告类型编码; nullable |
+| `announcement_type_name` | `VARCHAR` | 公告类型名称; nullable |
+| `page_column` | `VARCHAR` | 页面栏目编码; nullable |
+| `adjunct_type` | `VARCHAR` | 附件类型; nullable |
+| `pdf_url` | `VARCHAR` | 官方 PDF 链接; nullable |
+| `detail_url` | `VARCHAR` | 官方详情链接; nullable |
+| `source` | `VARCHAR` | 来源说明; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | snapshot_id, symbol, announcement_id |
+
 ### `market_regime_daily`
 
 市场概览页读取的聚合市场状态。

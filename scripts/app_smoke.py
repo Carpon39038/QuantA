@@ -217,6 +217,9 @@ def main() -> int:
         fundamentals_payload = fetch_json(
             f"{backend_origin}/api/v1/stocks/300750.SZ/fundamentals"
         )
+        disclosures_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/disclosures"
+        )
         screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
         screener_results_payload = fetch_json(
             f"{backend_origin}/api/v1/screener/runs/{screener_latest_payload['run_id']}/results"
@@ -355,6 +358,13 @@ def main() -> int:
         assert capital_flow_payload["latest_capital_feature"]["has_dragon_tiger"] is True
         assert fundamentals_payload["range"]["row_count"] == 0
         assert fundamentals_payload["latest_fundamental_feature"] is None
+        assert stock_snapshot_payload["available_series"]["official_disclosure"]["row_count"] >= 2
+        assert disclosures_payload["range"]["row_count"] >= 2
+        assert disclosures_payload["latest_disclosure"] is not None
+        assert "公告" in disclosures_payload["latest_disclosure"]["title"]
+        assert disclosures_payload["items"][-1]["detail_url"].startswith(
+            "https://www.cninfo.com.cn/new/disclosure/detail"
+        )
         assert screener_latest_payload["run_id"].startswith("screener_run_")
         assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])
         assert screener_latest_payload["result_count"] >= 3
@@ -448,6 +458,7 @@ def main() -> int:
         assert "个股详情" in frontend_html
         assert "价格轨迹" in frontend_html
         assert "财务侧" in frontend_html
+        assert "官方披露" in frontend_html
 
         print("[app-smoke] backend and frontend are healthy")
         print(

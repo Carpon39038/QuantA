@@ -1,0 +1,42 @@
+{
+  "provider": "fixture_json",
+  "biz_date": "2026-03-31",
+  "items": [
+    {
+      "symbol": "300750.SZ",
+      "display_name": "宁德时代",
+      "trade_date": "2026-03-31",
+      "announcement_id": "1225068592",
+      "org_id": "GD165627",
+      "title": "H股公告（董事会会议召开日期）",
+      "short_title": "董事会会议召开日期",
+      "announcement_time": "2026-03-31T16:10:10+08:00",
+      "announcement_type": "010112",
+      "announcement_type_name": "董事会",
+      "page_column": "SZCY",
+      "adjunct_type": "PDF",
+      "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225068592.PDF",
+      "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&announcementId=1225068592&orgId=GD165627&announcementTime=2026-03-31",
+      "source": "fixture_json.official_disclosure",
+      "updated_at": "2026-03-31T18:06:00+08:00"
+    },
+    {
+      "symbol": "002475.SZ",
+      "display_name": "立讯精密",
+      "trade_date": "2026-03-31",
+      "announcement_id": "1225067120",
+      "org_id": "9900014448",
+      "title": "关于股份回购进展情况的公告",
+      "short_title": "股份回购进展",
+      "announcement_time": "2026-03-31T18:00:00+08:00",
+      "announcement_type": "01010503",
+      "announcement_type_name": "股份回购",
+      "page_column": "SZMB",
+      "adjunct_type": "PDF",
+      "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225067120.PDF",
+      "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=002475&announcementId=1225067120&orgId=9900014448&announcementTime=2026-03-31",
+      "source": "fixture_json.official_disclosure",
+      "updated_at": "2026-03-31T18:06:00+08:00"
+    }
+  ]
+}

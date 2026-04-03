@@ -13,6 +13,10 @@ from backend.app.shared.providers.market_data_source import (
     MarketDataProvider,
     build_market_data_provider,
 )
+from backend.app.shared.providers.official_disclosure_source import (
+    OfficialDisclosureProvider,
+    build_official_disclosure_provider,
+)
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -27,9 +31,11 @@ def sync_market_data(
     ensure_dev_duckdb(settings)
 
     provider = build_market_data_provider(settings)
+    disclosure_provider = build_official_disclosure_provider(settings)
     return _sync_market_data_with_provider(
         settings,
         provider=provider,
+        disclosure_provider=disclosure_provider,
         biz_date=biz_date,
     )
 
@@ -44,6 +50,7 @@ def backfill_market_data(
     ensure_dev_duckdb(settings)
 
     provider = build_market_data_provider(settings)
+    disclosure_provider = build_official_disclosure_provider(settings)
     open_biz_dates = provider.list_open_biz_dates(
         start_biz_date=start_biz_date,
         end_biz_date=end_biz_date,
@@ -69,6 +76,7 @@ def backfill_market_data(
             _sync_market_data_with_provider(
                 settings,
                 provider=provider,
+                disclosure_provider=disclosure_provider,
                 biz_date=biz_date,
             )
         )
@@ -97,10 +105,15 @@ def _sync_market_data_with_provider(
     settings: AppSettings,
     *,
     provider: MarketDataProvider,
+    disclosure_provider: OfficialDisclosureProvider,
     biz_date: str | None = None,
 ) -> dict[str, object]:
     _consume_simulated_source_failure(settings, biz_date=biz_date)
     source_snapshot = provider.fetch_daily_snapshot(biz_date=biz_date)
+    disclosure_items = disclosure_provider.fetch_disclosures(
+        biz_date=source_snapshot.biz_date,
+        stock_basic=source_snapshot.stock_basic,
+    )
     if not source_snapshot.daily_bars:
         raise RuntimeError(
             f"Source provider {source_snapshot.provider} returned an empty daily snapshot "
@@ -206,6 +219,7 @@ def _sync_market_data_with_provider(
                         "pattern_signal_daily",
                         "capital_feature_daily",
                         "fundamental_feature_daily",
+                        "official_disclosure_item",
                         "screener_run",
                         "screener_result",
                         "backtest_request",
@@ -224,6 +238,7 @@ def _sync_market_data_with_provider(
                         "pattern_signal_daily": "PENDING",
                         "capital_feature_daily": "PENDING",
                         "fundamental_feature_daily": "PENDING",
+                        "official_disclosure_item": "PENDING",
                         "screener_run": "PENDING",
                         "screener_result": "PENDING",
                         "backtest_request": "PENDING",
@@ -239,6 +254,11 @@ def _sync_market_data_with_provider(
             ],
         )
 
+        official_disclosure_count = _insert_official_disclosure_rows(
+            connection,
+            snapshot_id=snapshot_id,
+            rows=list(disclosure_items),
+        )
         price_series_count = _materialize_price_series_snapshot(
             connection,
             snapshot_id=snapshot_id,
@@ -270,6 +290,7 @@ def _sync_market_data_with_provider(
                 "pattern_signal_daily": "READY",
                 "capital_feature_daily": "READY",
                 "fundamental_feature_daily": "READY",
+                "official_disclosure_item": "READY",
                 "screener_run": "PENDING",
                 "screener_result": "PENDING",
                 "backtest_request": "PENDING",
@@ -297,6 +318,7 @@ def _sync_market_data_with_provider(
             "daily_bar": len(source_snapshot.daily_bars),
             "price_series_daily": price_series_count,
             "market_regime_daily": market_regime_count,
+            "official_disclosure_item": official_disclosure_count,
             **analysis_counts,
         },
     }
@@ -397,6 +419,7 @@ def delete_snapshot_artifacts(
         connection.execute("DELETE FROM pattern_signal_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM capital_feature_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM fundamental_feature_daily WHERE snapshot_id = ?", [snapshot_id])
+        connection.execute("DELETE FROM official_disclosure_item WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM market_regime_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM artifact_publish WHERE snapshot_id = ?", [snapshot_id])
@@ -730,6 +753,66 @@ def _materialize_market_overview_snapshot(
         ],
     )
     return 1
+
+
+def _insert_official_disclosure_rows(
+    connection,
+    *,
+    snapshot_id: str,
+    rows: list[dict[str, object]],
+) -> int:
+    connection.execute(
+        "DELETE FROM official_disclosure_item WHERE snapshot_id = ?",
+        [snapshot_id],
+    )
+    if not rows:
+        return 0
+
+    normalized_rows = [
+        [
+            str(row["symbol"]),
+            str(row["trade_date"]),
+            snapshot_id,
+            str(row["announcement_id"]),
+            str(row["org_id"]),
+            str(row["title"]),
+            row.get("short_title"),
+            row.get("announcement_time"),
+            row.get("announcement_type"),
+            row.get("announcement_type_name"),
+            row.get("page_column"),
+            row.get("adjunct_type"),
+            row.get("pdf_url"),
+            row.get("detail_url"),
+            str(row.get("source", "official_disclosure")),
+            str(row["updated_at"]),
+        ]
+        for row in rows
+    ]
+    connection.executemany(
+        """
+        INSERT INTO official_disclosure_item (
+          symbol,
+          trade_date,
+          snapshot_id,
+          announcement_id,
+          org_id,
+          title,
+          short_title,
+          announcement_time,
+          announcement_type,
+          announcement_type_name,
+          page_column,
+          adjunct_type,
+          pdf_url,
+          detail_url,
+          source,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        normalized_rows,
+    )
+    return len(normalized_rows)
 
 
 def _update_artifact_publish_status(

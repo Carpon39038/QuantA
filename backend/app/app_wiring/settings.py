@@ -47,7 +47,9 @@ class AppSettings:
     alerts_path: Path
     fixture_path: Path
     source_fixture_dir: Path
+    disclosure_fixture_dir: Path
     source_provider: str
+    disclosure_provider: str
     source_symbols: tuple[str, ...]
     tushare_token: str | None
     tushare_exchange: str
@@ -108,7 +110,15 @@ def load_settings() -> AppSettings:
                 "backend/app/fixtures/source_snapshots",
             ),
         ),
+        disclosure_fixture_dir=_resolve_runtime_path(
+            root_dir,
+            os.environ.get(
+                "QUANTA_DISCLOSURE_FIXTURE_DIR",
+                "backend/app/fixtures/source_disclosures",
+            ),
+        ),
         source_provider=os.environ.get("QUANTA_SOURCE_PROVIDER", "fixture_json"),
+        disclosure_provider=os.environ.get("QUANTA_DISCLOSURE_PROVIDER", "auto"),
         source_symbols=source_symbols,
         tushare_token=_parse_optional_str("QUANTA_TUSHARE_TOKEN"),
         tushare_exchange=os.environ.get("QUANTA_TUSHARE_EXCHANGE", "SSE"),

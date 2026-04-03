@@ -1,0 +1,45 @@
+{
+  "plan_id": "2026-04-03-m15-official-disclosure-sidecar",
+  "title": "M15 Official Disclosure Sidecar",
+  "items": [
+    {
+      "id": "schema-official-disclosure-item",
+      "title": "Disclosure sidecar table exists",
+      "description": "DuckDB contains official_disclosure_item and bootstrap seeds deterministic development rows.",
+      "verification": [
+        "python3 -m backend.app.domains.market_data.bootstrap --print-summary",
+        "python3 scripts/render_db_schema.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "sync-disclosure-sidecar",
+      "title": "Sync writes disclosure sidecar",
+      "description": "market_data.sync writes official_disclosure_item rows and marks the artifact READY in both fixture-backed and live CNInfo-backed flows.",
+      "verification": [
+        "scripts/smoke.sh",
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "stock-disclosures-read-path",
+      "title": "Stock disclosures API is available",
+      "description": "The backend exposes a stock disclosures payload with snapshot-bound as-of semantics.",
+      "verification": [
+        "scripts/app_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "frontend-disclosure-panel",
+      "title": "Workbench renders official disclosures",
+      "description": "The frontend reads the disclosures payload and renders an official disclosure panel in stock detail.",
+      "verification": [
+        "node --check frontend/src/app/main.js",
+        "scripts/app_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

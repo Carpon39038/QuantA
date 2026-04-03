@@ -78,6 +78,16 @@ REQUIRED_SCHEMA_COLUMNS = {
         "fundamental_score",
         "updated_at",
     },
+    "official_disclosure_item": {
+        "announcement_id",
+        "org_id",
+        "title",
+        "announcement_time",
+        "pdf_url",
+        "detail_url",
+        "source",
+        "updated_at",
+    },
     "screener_result": {
         "trend_score",
         "price_volume_score",
@@ -307,6 +317,7 @@ def _seed_dev_dataset(
             [
                 "price_series_daily",
                 "market_regime_daily",
+                "official_disclosure_item",
                 "screener_run",
                 "screener_result",
                 "backtest_request",
@@ -321,6 +332,7 @@ def _seed_dev_dataset(
             {
                 "price_series_daily": "READY",
                 "market_regime_daily": "READY",
+                "official_disclosure_item": "READY",
                 "screener_run": "READY",
                 "screener_result": "READY",
                 "backtest_request": "READY",
@@ -342,11 +354,17 @@ def _seed_dev_dataset(
         "status": "READY",
         "price_basis": latest_price_basis,
         "required_artifacts_json": json.dumps(
-            ["price_series_daily"],
+            [
+                "price_series_daily",
+                "official_disclosure_item",
+            ],
             ensure_ascii=False,
         ),
         "artifact_status_json": json.dumps(
-            {"price_series_daily": "READY"},
+            {
+                "price_series_daily": "READY",
+                "official_disclosure_item": "READY",
+            },
             ensure_ascii=False,
         ),
         "published_at": previous_published_at,
@@ -470,6 +488,14 @@ def _seed_dev_dataset(
         price_basis=latest_price_basis,
     ):
         seeded_any |= _insert_row(connection, "price_series_daily", price_series_row)
+
+    for disclosure_row in _build_seed_official_disclosure_rows(
+        previous_snapshot_id=previous_snapshot_id,
+        previous_updated_at=previous_published_at,
+        latest_snapshot_id=latest_snapshot_id,
+        latest_updated_at=latest_published_at,
+    ):
+        seeded_any |= _insert_row(connection, "official_disclosure_item", disclosure_row)
 
     return seeded_any
 
@@ -832,6 +858,89 @@ def _build_seed_price_series_rows(
             "adj_factor": 1.0000,
             "volume": 7123400.0,
             "amount": 947600000.0,
+            "updated_at": latest_updated_at,
+        },
+    ]
+
+
+def _build_seed_official_disclosure_rows(
+    *,
+    previous_snapshot_id: str,
+    previous_updated_at: str,
+    latest_snapshot_id: str,
+    latest_updated_at: str,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "symbol": "300750.SZ",
+            "trade_date": "2026-03-26",
+            "snapshot_id": previous_snapshot_id,
+            "announcement_id": "1225012601",
+            "org_id": "GD165627",
+            "title": "关于完成工商变更登记并换发营业执照的公告",
+            "short_title": "工商变更登记",
+            "announcement_time": "2026-03-26T18:05:00+08:00",
+            "announcement_type": "010115",
+            "announcement_type_name": "公司治理",
+            "page_column": "SZCY",
+            "adjunct_type": "PDF",
+            "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-26/1225012601.PDF",
+            "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&announcementId=1225012601&orgId=GD165627&announcementTime=2026-03-26",
+            "source": "dev-seed-official-disclosure",
+            "updated_at": previous_updated_at,
+        },
+        {
+            "symbol": "300750.SZ",
+            "trade_date": "2026-03-27",
+            "snapshot_id": latest_snapshot_id,
+            "announcement_id": "1225038702",
+            "org_id": "GD165627",
+            "title": "关于回购公司A股股份的进展公告",
+            "short_title": "回购股份进展",
+            "announcement_time": "2026-03-27T18:18:00+08:00",
+            "announcement_type": "01010503",
+            "announcement_type_name": "股份回购",
+            "page_column": "SZCY",
+            "adjunct_type": "PDF",
+            "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-27/1225038702.PDF",
+            "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300750&announcementId=1225038702&orgId=GD165627&announcementTime=2026-03-27",
+            "source": "dev-seed-official-disclosure",
+            "updated_at": latest_updated_at,
+        },
+        {
+            "symbol": "002475.SZ",
+            "trade_date": "2026-03-27",
+            "snapshot_id": latest_snapshot_id,
+            "announcement_id": "1225038510",
+            "org_id": "9900014448",
+            "title": "关于股份回购进展情况的公告",
+            "short_title": "股份回购进展",
+            "announcement_time": "2026-03-27T19:02:00+08:00",
+            "announcement_type": "01010503",
+            "announcement_type_name": "股份回购",
+            "page_column": "SZMB",
+            "adjunct_type": "PDF",
+            "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-27/1225038510.PDF",
+            "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=002475&announcementId=1225038510&orgId=9900014448&announcementTime=2026-03-27",
+            "source": "dev-seed-official-disclosure",
+            "updated_at": latest_updated_at,
+        },
+        {
+            "symbol": "688017.SH",
+            "trade_date": "2026-03-27",
+            "snapshot_id": latest_snapshot_id,
+            "announcement_id": "1225039908",
+            "org_id": "9900041602",
+            "title": "关于召开2025年度业绩说明会的公告",
+            "short_title": "业绩说明会",
+            "announcement_time": "2026-03-27T20:12:00+08:00",
+            "announcement_type": "010109",
+            "announcement_type_name": "投资者关系",
+            "page_column": "SHKCP",
+            "adjunct_type": "PDF",
+            "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-27/1225039908.PDF",
+            "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=688017&announcementId=1225039908&orgId=9900041602&announcementTime=2026-03-27",
+            "source": "dev-seed-official-disclosure",
             "updated_at": latest_updated_at,
         },
     ]

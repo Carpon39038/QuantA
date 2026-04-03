@@ -18,6 +18,8 @@ const indicatorGridNode = document.querySelector("#indicator-grid");
 const patternListNode = document.querySelector("#pattern-list");
 const capitalGridNode = document.querySelector("#capital-grid");
 const fundamentalGridNode = document.querySelector("#fundamental-grid");
+const disclosureMetaNode = document.querySelector("#disclosure-meta");
+const disclosureListNode = document.querySelector("#disclosure-list");
 const strategyNameNode = document.querySelector("#strategy-name");
 const metricGridNode = document.querySelector("#metric-grid");
 const backtestRequestNode = document.querySelector("#backtest-request");
@@ -234,6 +236,7 @@ function renderFocusStock({
   indicators,
   capitalFlow,
   fundamentals,
+  disclosures,
   priceSeries
 }) {
   focusSymbolNode.textContent = focusCandidate.symbol;
@@ -363,6 +366,41 @@ function renderFocusStock({
       detail: `${fundamentals.range.row_count} 个快照日`
     }
   ]);
+
+  const disclosureItems = disclosures.items.slice(-4).reverse();
+  disclosureMetaNode.textContent = `${disclosures.range.row_count} 条公告元数据`;
+  disclosureListNode.innerHTML = "";
+  if (!disclosureItems.length) {
+    const empty = document.createElement("li");
+    empty.className = "disclosure-empty";
+    empty.textContent = "当前快照下暂无官方披露元数据。";
+    disclosureListNode.appendChild(empty);
+    return;
+  }
+
+  for (const item of disclosureItems) {
+    const li = document.createElement("li");
+    li.className = "disclosure-item";
+
+    const link = document.createElement("a");
+    link.className = "disclosure-link";
+    link.href = item.detail_url ?? item.pdf_url ?? "#";
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = item.title;
+
+    const meta = document.createElement("p");
+    meta.className = "disclosure-meta";
+    meta.textContent = [
+      item.trade_date ?? "--",
+      item.announcement_type_name ?? item.page_column ?? "官方披露",
+      item.adjunct_type ?? "PDF"
+    ].join(" · ");
+
+    li.appendChild(link);
+    li.appendChild(meta);
+    disclosureListNode.appendChild(li);
+  }
 }
 
 function renderBacktest(backtestPayload) {
@@ -453,11 +491,12 @@ async function fetchWorkbenchData() {
     throw new Error("latest screener returned no focus candidate");
   }
 
-  const [stockSnapshot, indicators, capitalFlow, fundamentals, priceSeries] = await Promise.all([
+  const [stockSnapshot, indicators, capitalFlow, fundamentals, disclosures, priceSeries] = await Promise.all([
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/snapshot`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/indicators`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/capital-flow`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/fundamentals`),
+    fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/disclosures`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/kline?dataset=price_series`)
   ]);
 
@@ -470,6 +509,7 @@ async function fetchWorkbenchData() {
     indicators,
     capitalFlow,
     fundamentals,
+    disclosures,
     priceSeries
   };
 }
