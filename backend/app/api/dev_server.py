@@ -301,6 +301,37 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                     )
                     return
 
+            if parsed.path == "/api/v1/tasks/history-backfill/run":
+                try:
+                    queued_task = enqueue_service_task(
+                        container.settings,
+                        task_name="history_backfill",
+                        start_biz_date=_query_value(query, "start_biz_date")
+                        or _body_value(body, "start_biz_date"),
+                        end_biz_date=_query_value(query, "end_biz_date")
+                        or _body_value(body, "end_biz_date"),
+                    )
+                    self._send_json(
+                        202,
+                        {
+                            "status": "accepted",
+                            "task": queued_task,
+                        },
+                    )
+                    return
+                except LookupError as exc:
+                    self._send_json(
+                        404,
+                        {"error": "not_found", "message": str(exc)},
+                    )
+                    return
+                except ValueError as exc:
+                    self._send_json(
+                        400,
+                        {"error": "bad_request", "message": str(exc)},
+                    )
+                    return
+
             if parsed.path == "/api/v1/tasks/daily-screener/run":
                 try:
                     queued_task = enqueue_service_task(

@@ -29,12 +29,13 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 4. `domains.tasking.scheduler` 既能跑有限 tick 的 pipeline，也能以 resident loop 方式持续轮询。
 5. `scripts/pipeline_smoke.py` 会在临时 runtime 验证成功路径和 retry 路径，避免把失败恢复逻辑只留在对话里。
 6. `market_data.sync --start-biz-date/--end-biz-date` 已支持最小历史回补，并默认跳过已存在的 `biz_date`，避免重复生成同日 source-backed 快照。
+7. scheduler 在 source provider 明显领先于最新 READY snapshot 时，会优先 enqueue `history_backfill`，并由 service worker 把回补出的历史 snapshot 继续推进到 `READY`，避免遗留多条悬空 `BUILDING` 快照。
 
 ## Known Risks
 
 1. 真实外部数据源字段漂移和限流仍可能让 `akshare` provider 失效。
 2. 单机 DuckDB 读写争用仍需要靠“单写者优先”和顺序 smoke 避免。
-3. 当前 source-backed sync 虽已支持最小历史回补，但还没有覆盖全市场、复权修复、企业行为修正和自动化长期补数。
+3. 当前 source-backed sync 虽已支持最小历史回补与调度面接线，但还没有覆盖全市场、复权修复、企业行为修正和自动化长期补数策略。
 4. 回测成交假设仍偏理想化，尚未引入更真实的滑点和撮合约束。
 
 ## Guardrail Direction

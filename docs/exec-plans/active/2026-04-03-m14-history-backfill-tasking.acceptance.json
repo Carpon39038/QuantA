@@ -1,0 +1,51 @@
+{
+  "plan_id": "2026-04-03-m14-history-backfill-tasking",
+  "title": "M14 History Backfill Tasking",
+  "status": "completed",
+  "updated_at": "2026-04-03",
+  "items": [
+    {
+      "id": "M14-001",
+      "title": "history_backfill is a first-class service task",
+      "priority": 1,
+      "description": "The service runner, durable queue, and worker all support a dedicated history_backfill task with optional explicit date ranges.",
+      "artifacts": [
+        "backend/app/domains/tasking/service_runner.py",
+        "backend/app/domains/tasking/queue.py",
+        "backend/app/domains/tasking/worker.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M14-002",
+      "title": "Scheduler prefers backfill for catch-up",
+      "priority": 1,
+      "description": "When the source provider is ahead of the latest READY snapshot, scheduler enqueues history_backfill so catch-up is handled through a unified service path.",
+      "artifacts": [
+        "backend/app/domains/tasking/scheduler.py",
+        "scripts/pipeline_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/pipeline_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M14-003",
+      "title": "Backfill can be triggered through the backend API",
+      "priority": 1,
+      "description": "The backend exposes POST /api/v1/tasks/history-backfill/run and app smoke verifies that the request is accepted, processed, and reported in task runs.",
+      "artifacts": [
+        "backend/app/api/dev_server.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

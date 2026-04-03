@@ -19,6 +19,7 @@ from backend.app.shared.providers.duckdb import connect_duckdb
 
 
 PIPELINE_TASK_ORDER = (
+    "history_backfill",
     "daily_sync",
     "daily_screener",
     "daily_backtest",
@@ -55,6 +56,9 @@ def enqueue_next_pipeline_task(settings: AppSettings) -> dict[str, object]:
     latest_ready_snapshot = _load_latest_ready_snapshot_meta(settings)
     if latest_ready_snapshot is not None and source_biz_date <= str(latest_ready_snapshot["biz_date"]):
         return {"enqueued": None, "reason": "source_not_newer"}
+
+    if latest_ready_snapshot is not None:
+        return {"enqueued": enqueue_service_task(settings, task_name="history_backfill")}
 
     return {"enqueued": enqueue_service_task(settings, task_name="daily_sync")}
 

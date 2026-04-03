@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 
 from backend.app.app_wiring.settings import AppSettings
-from backend.app.domains.market_data.sync import load_latest_building_snapshot
+from backend.app.domains.market_data.sync import (
+    latest_source_biz_date,
+    list_source_biz_dates,
+    load_latest_building_snapshot,
+)
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.service_runner import SUPPORTED_SERVICE_TASKS
 from backend.app.shared.providers.duckdb import connect_duckdb
@@ -20,6 +24,8 @@ def enqueue_service_task(
     *,
     task_name: str,
     snapshot_id: str | None = None,
+    start_biz_date: str | None = None,
+    end_biz_date: str | None = None,
 ) -> dict[str, object]:
     if task_name not in SUPPORTED_SERVICE_TASKS:
         raise ValueError(f"Unsupported service task: {task_name}")
@@ -37,11 +43,18 @@ def enqueue_service_task(
             task_name=task_name,
             snapshot_id=snapshot_id,
         )
+        resolved_start_biz_date, resolved_end_biz_date = _resolve_service_date_range(
+            settings,
+            connection,
+            task_name=task_name,
+            start_biz_date=start_biz_date,
+            end_biz_date=end_biz_date,
+        )
         _replace_task_run_log(
             connection,
             task_id=task_id,
             task_name=task_name,
-            biz_date=str(published_snapshot["biz_date"]),
+            biz_date=str(resolved_end_biz_date or published_snapshot["biz_date"]),
             snapshot_id=str(published_snapshot["snapshot_id"]),
             attempt_no=0,
             status="PENDING",
@@ -50,6 +63,8 @@ def enqueue_service_task(
             detail={
                 "queue_source": "durable_file_queue",
                 "requested_at": requested_at,
+                "start_biz_date": resolved_start_biz_date,
+                "end_biz_date": resolved_end_biz_date,
             },
         )
     finally:
@@ -63,6 +78,8 @@ def enqueue_service_task(
         "snapshot_id": str(published_snapshot["snapshot_id"]),
         "raw_snapshot_id": str(published_snapshot["raw_snapshot_id"]),
         "biz_date": str(published_snapshot["biz_date"]),
+        "start_biz_date": resolved_start_biz_date,
+        "end_biz_date": resolved_end_biz_date,
         "retry_count": 0,
         "max_retries": settings.task_max_retries,
         "next_attempt_at": requested_at,
@@ -82,6 +99,8 @@ def enqueue_service_task(
         "snapshot_id": str(published_snapshot["snapshot_id"]),
         "raw_snapshot_id": str(published_snapshot["raw_snapshot_id"]),
         "retry_count": 0,
+        "start_biz_date": resolved_start_biz_date,
+        "end_biz_date": resolved_end_biz_date,
         "queue_path": str(queue_path),
     }
 
@@ -339,3 +358,36 @@ def _resolve_service_snapshot(
             }
 
     return _resolve_published_snapshot(connection, snapshot_id=snapshot_id)
+
+
+def _resolve_service_date_range(
+    settings: AppSettings,
+    connection,
+    *,
+    task_name: str,
+    start_biz_date: str | None,
+    end_biz_date: str | None,
+) -> tuple[str | None, str | None]:
+    if task_name != "history_backfill":
+        return None, None
+
+    if bool(start_biz_date) != bool(end_biz_date):
+        raise ValueError("history_backfill requires start_biz_date and end_biz_date together")
+    if start_biz_date is not None and end_biz_date is not None:
+        return start_biz_date, end_biz_date
+
+    latest_ready_snapshot = _resolve_published_snapshot(connection, snapshot_id=None)
+    latest_ready_biz_date = str(latest_ready_snapshot["biz_date"])
+    source_biz_date = latest_source_biz_date(settings)
+    if source_biz_date <= latest_ready_biz_date:
+        raise ValueError("history_backfill has no newer biz_date to ingest")
+
+    candidate_dates = list_source_biz_dates(
+        settings,
+        start_biz_date=latest_ready_biz_date,
+        end_biz_date=source_biz_date,
+    )
+    pending_dates = [biz_date for biz_date in candidate_dates if biz_date > latest_ready_biz_date]
+    if not pending_dates:
+        raise ValueError("history_backfill has no open biz dates beyond the latest READY snapshot")
+    return pending_dates[0], pending_dates[-1]

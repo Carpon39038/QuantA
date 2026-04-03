@@ -4,6 +4,7 @@ import json
 
 from backend.app.domains.backtest.bootstrap import materialize_backtest_snapshot
 from backend.app.domains.market_data.sync import (
+    backfill_market_data,
     finalize_snapshot_publish,
     load_latest_building_snapshot,
     sync_market_data,
@@ -18,6 +19,7 @@ from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 
 SUPPORTED_SERVICE_TASKS = {
     "daily_sync",
+    "history_backfill",
     "daily_screener",
     "daily_backtest",
 }
@@ -28,9 +30,17 @@ def run_service_task(
     *,
     task_name: str,
     snapshot_id: str | None = None,
+    start_biz_date: str | None = None,
+    end_biz_date: str | None = None,
 ) -> dict[str, object]:
     if task_name == "daily_sync":
         return run_daily_sync(settings)
+    if task_name == "history_backfill":
+        return run_history_backfill(
+            settings,
+            start_biz_date=start_biz_date,
+            end_biz_date=end_biz_date,
+        )
     if task_name == "daily_screener":
         return run_daily_screener(settings, snapshot_id=snapshot_id)
     if task_name == "daily_backtest":
@@ -46,6 +56,50 @@ def run_daily_sync(settings: AppSettings) -> dict[str, object]:
         "raw_snapshot_id": str(sync_summary["raw_snapshot_id"]),
         "biz_date": str(sync_summary["biz_date"]),
         "sync": sync_summary,
+    }
+
+
+def run_history_backfill(
+    settings: AppSettings,
+    *,
+    start_biz_date: str | None,
+    end_biz_date: str | None,
+) -> dict[str, object]:
+    if start_biz_date is None or end_biz_date is None:
+        raise ValueError("history_backfill requires start_biz_date and end_biz_date")
+
+    backfill_summary = backfill_market_data(
+        settings,
+        start_biz_date=start_biz_date,
+        end_biz_date=end_biz_date,
+    )
+
+    completed_snapshots: list[dict[str, object]] = []
+    for snapshot_meta in backfill_summary["snapshots"]:
+        snapshot_id = str(snapshot_meta["snapshot_id"])
+        screener_summary = run_daily_screener(settings, snapshot_id=snapshot_id)
+        backtest_summary = run_daily_backtest(settings, snapshot_id=snapshot_id)
+        completed_snapshots.append(
+            {
+                "snapshot_id": snapshot_id,
+                "raw_snapshot_id": str(snapshot_meta["raw_snapshot_id"]),
+                "biz_date": str(snapshot_meta["biz_date"]),
+                "screener_run_id": str(screener_summary["screener"]["run_id"]),
+                "backtest_id": str(backtest_summary["backtest"]["backtest_id"]),
+                "status": "READY",
+            }
+        )
+
+    latest_snapshot = _resolve_latest_ready_snapshot(settings)
+    return {
+        "runtime": ensure_runtime_directories(settings),
+        "snapshot_id": str(latest_snapshot["snapshot_id"]),
+        "raw_snapshot_id": str(latest_snapshot["raw_snapshot_id"]),
+        "biz_date": str(latest_snapshot["biz_date"]),
+        "backfill": {
+            **backfill_summary,
+            "completed_snapshots": completed_snapshots,
+        },
     }
 
 
@@ -163,6 +217,32 @@ def _resolve_pipeline_snapshot(
         return building_snapshot
 
     raise LookupError("No BUILDING snapshot available for pipeline task")
+
+
+def _resolve_latest_ready_snapshot(settings: AppSettings) -> dict[str, object]:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        row = connection.execute(
+            """
+            SELECT snapshot_id, raw_snapshot_id, biz_date, price_basis, published_at
+            FROM artifact_publish
+            WHERE status = 'READY'
+            ORDER BY publish_seq DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            raise LookupError("No READY snapshot available")
+        snapshot_id, raw_snapshot_id, biz_date, price_basis, published_at = row
+        return {
+            "snapshot_id": str(snapshot_id),
+            "raw_snapshot_id": str(raw_snapshot_id),
+            "biz_date": str(biz_date),
+            "price_basis": str(price_basis),
+            "published_at": str(published_at),
+        }
+    finally:
+        connection.close()
 
 
 def _update_snapshot_artifact_state(

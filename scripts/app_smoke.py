@@ -269,6 +269,18 @@ def main() -> int:
             ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "1"],
             env,
         )
+        history_backfill_post_payload = post_json(
+            f"{backend_origin}/api/v1/tasks/history-backfill/run",
+            {
+                "start_biz_date": "2026-03-31",
+                "end_biz_date": "2026-03-31",
+            },
+        )
+        queued_service_task_ids.append(str(history_backfill_post_payload["task"]["task_id"]))
+        history_backfill_worker_run = run_checked_command(
+            ["python3", "-m", "backend.app.domains.tasking.worker", "--once", "--task", "service", "--limit", "1"],
+            env,
+        )
         processed_task_runs_payload = fetch_json(f"{backend_origin}/api/v1/tasks/runs")
         refreshed_snapshot_payload = fetch_json(f"{backend_origin}/api/v1/snapshot/latest")
         refreshed_screener_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
@@ -390,6 +402,10 @@ def main() -> int:
         assert daily_backtest_post_payload["task"]["task_name"] == "daily_backtest"
         assert daily_backtest_post_payload["task"]["status"] == "PENDING"
         assert "processed: 1" in backtest_service_worker_run.stdout
+        assert history_backfill_post_payload["status"] == "accepted"
+        assert history_backfill_post_payload["task"]["task_name"] == "history_backfill"
+        assert history_backfill_post_payload["task"]["status"] == "PENDING"
+        assert "processed: 1" in history_backfill_worker_run.stdout
         processed_tasks_by_id = {
             str(item["task_id"]): item for item in processed_task_runs_payload["items"]
         }
@@ -399,6 +415,14 @@ def main() -> int:
                 processed_tasks_by_id[task_id]["detail"]["queue_source"]
                 == "durable_file_queue"
             )
+        history_backfill_task = processed_tasks_by_id[
+            str(history_backfill_post_payload["task"]["task_id"])
+        ]
+        assert history_backfill_task["detail"]["execution_summary"]["backfill"]["snapshot_count"] == 0
+        assert (
+            history_backfill_task["detail"]["execution_summary"]["backfill"]["skipped_existing_biz_dates"]
+            == ["2026-03-31"]
+        )
         assert refreshed_snapshot_payload["snapshot_id"] == pipeline_snapshot_id
         assert refreshed_snapshot_payload["market_overview"]["trade_date"] == "2026-03-31"
         assert refreshed_screener_payload["snapshot_id"] == pipeline_snapshot_id

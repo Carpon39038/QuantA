@@ -2,7 +2,7 @@
 
 | ID | Area | Debt | Impact | Next Step |
 | --- | --- | --- | --- | --- |
-| TD-001 | Repo | DuckDB-backed dev 闭环已覆盖 latest snapshot、as-of、analysis、screener、backtest、source-backed sync、最小历史回补、retry/backoff、alerts、resident scheduler 与 Tushare canonical provider 的离线 / live 主链；当前 live 财务覆盖也已通过按股票财报期回退打通，但仍缺正式运维化的全量回补、官方披露 adapter 与 AKShare/BaoStock 的补充校验链 | 当前已能稳定开发与验证最小研究闭环，也能跑真实 canonical sync、财务 sidecar 和隔离历史回补；离完整 v1.0 盘后生产运行仍差回补自动化、披露源接入与补充数据源 shadow validation | 继续把 Tushare 历史回补接进正式运维链，再做官方披露接入，以及 AKShare/BaoStock 的补充校验链 |
+| TD-001 | Repo | DuckDB-backed dev 闭环已覆盖 latest snapshot、as-of、analysis、screener、backtest、source-backed sync、最小历史回补、retry/backoff、alerts、resident scheduler 与 Tushare canonical provider 的离线 / live 主链；当前 live 财务覆盖也已通过按股票财报期回退打通，历史回补也已接入 service queue / scheduler，但仍缺更完整的长期补数策略、官方披露 adapter 与 AKShare/BaoStock 的补充校验链 | 当前已能稳定开发与验证最小研究闭环，也能跑真实 canonical sync、财务 sidecar、隔离历史回补和基础调度 catch-up；离完整 v1.0 盘后生产运行仍差回补长期运维策略、披露源接入与补充数据源 shadow validation | 继续补全长期 backfill 运维策略，再做官方披露接入，以及 AKShare/BaoStock 的补充校验链 |
 | TD-002 | Data | 最小 v1.0 DDL 已落地，并新增 `fundamental_feature_daily` 财务 sidecar，但 benchmark 历史、原始财务事实表和更完整任务/请求状态仍有缺口 | 数据层现在可支撑开发 workbench，并开始消费 canonical 财务分，但真实研究与运维约束仍不够全 | 继续按里程碑补齐 benchmark/原始财务/任务状态相关表与口径 |
 | TD-003 | Reliability | 任务状态、durable request、阶段化 worker、retry/backoff、alerts 和 resident scheduler 已落地，但仍缺远端通知、自动 supervisor、运行手册和更细粒度的失败分类 | 盘后链路已有最小可靠性护栏，但仍不算真正可运维 | 继续补告警下游、部署侧常驻守护和 source/provider 级故障分层 |
 | TD-004 | Quality | 文档校验与 smoke 未接入 CI | 结构可能随时间失效 | 后续补最小 CI job |

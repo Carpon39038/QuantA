@@ -271,6 +271,8 @@ def _process_one_service_request(
     snapshot_id = str(queue_item["snapshot_id"])
     biz_date = str(queue_item["biz_date"])
     requested_at = str(queue_item["requested_at"])
+    start_biz_date = queue_item.get("start_biz_date")
+    end_biz_date = queue_item.get("end_biz_date")
 
     replace_service_task_run_log(
         settings,
@@ -285,6 +287,8 @@ def _process_one_service_request(
         detail={
             "queue_source": "durable_file_queue",
             "requested_at": requested_at,
+            "start_biz_date": start_biz_date,
+            "end_biz_date": end_biz_date,
         },
     )
 
@@ -292,6 +296,16 @@ def _process_one_service_request(
         settings,
         task_name=task_name,
         snapshot_id=snapshot_id if task_name != "daily_sync" else None,
+        start_biz_date=(
+            str(start_biz_date)
+            if isinstance(start_biz_date, str) and start_biz_date != ""
+            else None
+        ),
+        end_biz_date=(
+            str(end_biz_date)
+            if isinstance(end_biz_date, str) and end_biz_date != ""
+            else None
+        ),
     )
     resolved_snapshot_id = str(execution_summary.get("snapshot_id", snapshot_id))
     resolved_biz_date = str(execution_summary.get("biz_date", biz_date))
