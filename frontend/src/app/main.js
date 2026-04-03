@@ -17,6 +17,7 @@ const priceGridNode = document.querySelector("#price-grid");
 const indicatorGridNode = document.querySelector("#indicator-grid");
 const patternListNode = document.querySelector("#pattern-list");
 const capitalGridNode = document.querySelector("#capital-grid");
+const fundamentalGridNode = document.querySelector("#fundamental-grid");
 const strategyNameNode = document.querySelector("#strategy-name");
 const metricGridNode = document.querySelector("#metric-grid");
 const backtestRequestNode = document.querySelector("#backtest-request");
@@ -232,6 +233,7 @@ function renderFocusStock({
   stockSnapshot,
   indicators,
   capitalFlow,
+  fundamentals,
   priceSeries
 }) {
   focusSymbolNode.textContent = focusCandidate.symbol;
@@ -253,6 +255,16 @@ function renderFocusStock({
       label: "候选得分",
       value: String(focusCandidate.score),
       detail: focusCandidate.strategy_name
+    },
+    {
+      label: "财务分",
+      value: formatNumber(
+        fundamentals.latest_fundamental_feature?.fundamental_score,
+        1
+      ),
+      detail:
+        fundamentals.latest_fundamental_feature?.report_period ??
+        "财务 sidecar"
     }
   ]);
 
@@ -315,6 +327,40 @@ function renderFocusStock({
       label: "龙虎榜标签",
       value: latestCapital.has_dragon_tiger ? "命中" : "无",
       detail: "波动提醒"
+    }
+  ]);
+
+  const latestFundamental = fundamentals.latest_fundamental_feature ?? {};
+  renderMiniCards(fundamentalGridNode, [
+    {
+      label: "财报期",
+      value: latestFundamental.report_period ?? "--",
+      detail: latestFundamental.ann_date ?? "公告日期"
+    },
+    {
+      label: "扣非 ROE",
+      value: formatPercent(latestFundamental.roe_dt, 1),
+      detail: "盈利质量"
+    },
+    {
+      label: "资产负债率",
+      value: formatPercent(latestFundamental.debt_to_assets, 1),
+      detail: "杠杆水平"
+    },
+    {
+      label: "现金/利润",
+      value: formatNumber(latestFundamental.cash_to_profit, 2),
+      detail: `归母净利 ${formatAmount(latestFundamental.net_profit_attr_p)}`
+    },
+    {
+      label: "营业总收入",
+      value: formatAmount(latestFundamental.total_revenue),
+      detail: "财务规模"
+    },
+    {
+      label: "财务综合分",
+      value: formatNumber(latestFundamental.fundamental_score, 1),
+      detail: `${fundamentals.range.row_count} 个快照日`
     }
   ]);
 }
@@ -407,10 +453,11 @@ async function fetchWorkbenchData() {
     throw new Error("latest screener returned no focus candidate");
   }
 
-  const [stockSnapshot, indicators, capitalFlow, priceSeries] = await Promise.all([
+  const [stockSnapshot, indicators, capitalFlow, fundamentals, priceSeries] = await Promise.all([
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/snapshot`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/indicators`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/capital-flow`),
+    fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/fundamentals`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/kline?dataset=price_series`)
   ]);
 
@@ -422,6 +469,7 @@ async function fetchWorkbenchData() {
     stockSnapshot,
     indicators,
     capitalFlow,
+    fundamentals,
     priceSeries
   };
 }

@@ -1,0 +1,64 @@
+{
+  "plan_id": "2026-04-03-m12-tushare-live-validation",
+  "title": "M12 Tushare Live Validation",
+  "status": "completed",
+  "updated_at": "2026-04-03",
+  "items": [
+    {
+      "id": "M12-001",
+      "title": "Live smoke command exists and can classify provider failures",
+      "priority": 1,
+      "description": "The repository provides a dedicated Tushare live smoke command and emits structured categories for external provider failures.",
+      "artifacts": [
+        "scripts/tushare_live_smoke.py",
+        "backend/app/shared/providers/market_data_source.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M12-002",
+      "title": "Real token can pass the first live provider gate",
+      "priority": 1,
+      "description": "A real Tushare token can successfully call the first required canonical dataset and produce a successful live smoke summary.",
+      "artifacts": [
+        "scripts/tushare_live_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_live_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M12-003",
+      "title": "Live sync can write an isolated real-data snapshot",
+      "priority": 1,
+      "description": "A real Tushare-backed market_data sync can run against an isolated runtime directory and materialize a BUILDING snapshot without polluting the default dev database.",
+      "artifacts": [
+        "scripts/tushare_live_sync_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M12-004",
+      "title": "VIP financial datasets are reachable in live mode with symbol-level fallback",
+      "priority": 1,
+      "description": "The current real token can access fina_indicator_vip/income_vip/balancesheet_vip/cashflow_vip, and the provider can fall back per symbol to the nearest available report period so live sync materializes covered fundamental_feature_daily rows.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "scripts/tushare_live_smoke.py",
+        "scripts/tushare_live_sync_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_live_smoke.py",
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

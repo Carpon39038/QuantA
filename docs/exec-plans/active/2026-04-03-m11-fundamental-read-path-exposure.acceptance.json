@@ -1,0 +1,54 @@
+{
+  "plan_id": "2026-04-03-m11-fundamental-read-path-exposure",
+  "title": "M11 Fundamental Read-Path Exposure",
+  "status": "active",
+  "updated_at": "2026-04-03",
+  "items": [
+    {
+      "id": "M11-001",
+      "title": "Stock fundamentals API is available",
+      "priority": 1,
+      "description": "The backend exposes a stock fundamentals payload that reads fundamental_feature_daily with snapshot-bound as-of semantics.",
+      "artifacts": [
+        "backend/app/domains/market_data/repo.py",
+        "backend/app/app_wiring/container.py",
+        "backend/app/api/dev_server.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M11-002",
+      "title": "Workbench displays a financial-side panel",
+      "priority": 1,
+      "description": "The frontend reads the fundamentals payload and renders a financial-side panel in stock detail.",
+      "artifacts": [
+        "frontend/src/app/index.html",
+        "frontend/src/app/main.js",
+        "frontend/src/app/main.css",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "node --check frontend/src/app/main.js",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M11-003",
+      "title": "Default fixture chain keeps empty-but-valid financial payload semantics",
+      "priority": 2,
+      "description": "When canonical financial sidecars are absent in the default fixture provider, the API returns an empty but valid payload instead of placeholder fake financial rows.",
+      "artifacts": [
+        "backend/app/domains/analysis/bootstrap.py",
+        "scripts/app_smoke.py"
+      ],
+      "verify_steps": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

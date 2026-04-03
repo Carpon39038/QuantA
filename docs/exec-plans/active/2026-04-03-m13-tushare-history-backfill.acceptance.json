@@ -1,0 +1,65 @@
+{
+  "plan_id": "2026-04-03-m13-tushare-history-backfill",
+  "title": "M13 Tushare History Backfill",
+  "status": "completed",
+  "updated_at": "2026-04-03",
+  "items": [
+    {
+      "id": "M13-001",
+      "title": "Providers can enumerate open biz dates",
+      "priority": 1,
+      "description": "The source provider abstraction exposes open biz date enumeration so sync can plan a historical range instead of only pulling one target day.",
+      "artifacts": [
+        "backend/app/shared/providers/market_data_source.py",
+        "scripts/tushare_provider_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_provider_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M13-002",
+      "title": "Sync supports minimal historical backfill",
+      "priority": 1,
+      "description": "market_data.sync accepts a start/end biz date range and writes source-backed snapshots for each open biz date in that range.",
+      "artifacts": [
+        "backend/app/domains/market_data/sync.py",
+        "scripts/market_data_backfill_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M13-003",
+      "title": "Backfill is idempotent for existing biz dates",
+      "priority": 1,
+      "description": "Rerunning the same backfill range skips already ingested biz dates instead of creating duplicate same-day snapshots by default.",
+      "artifacts": [
+        "backend/app/domains/market_data/sync.py",
+        "scripts/market_data_backfill_smoke.py",
+        "scripts/tushare_live_backfill_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/market_data_backfill_smoke.py",
+        "python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "M13-004",
+      "title": "Live backfill works with a real Tushare token",
+      "priority": 1,
+      "description": "A real Tushare token can backfill a recent isolated date range into DuckDB and rerun the same range without duplicating biz dates.",
+      "artifacts": [
+        "scripts/tushare_live_backfill_smoke.py"
+      ],
+      "verify_steps": [
+        "python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

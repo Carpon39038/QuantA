@@ -12,6 +12,26 @@ from backend.app.shared.providers.local_fixture import load_json_fixture
 
 
 CN_TZ = timezone(timedelta(hours=8))
+TUSHARE_FINANCIAL_DATASETS = (
+    "fina_indicator_vip",
+    "income_vip",
+    "balancesheet_vip",
+    "cashflow_vip",
+)
+
+
+class TushareRequestError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        dataset_name: str,
+        category: str,
+        message: str,
+    ) -> None:
+        super().__init__(f"Tushare {dataset_name} failed [{category}]: {message}")
+        self.dataset_name = dataset_name
+        self.category = category
+        self.message = message
 
 
 @dataclass(frozen=True)
@@ -30,8 +50,26 @@ class MarketDataSnapshot:
     fundamental_feature_overrides: tuple[dict[str, object], ...] = ()
 
 
+@dataclass(frozen=True)
+class TushareFinancialBundle:
+    report_period_by_symbol: dict[str, str]
+    fina_indicator_rows: tuple[dict[str, object], ...]
+    income_rows: tuple[dict[str, object], ...]
+    balancesheet_rows: tuple[dict[str, object], ...]
+    cashflow_rows: tuple[dict[str, object], ...]
+    warnings: tuple[str, ...] = ()
+
+
 class MarketDataProvider(Protocol):
     def latest_available_biz_date(self) -> str:
+        ...
+
+    def list_open_biz_dates(
+        self,
+        *,
+        start_biz_date: str,
+        end_biz_date: str,
+    ) -> list[str]:
         ...
 
     def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
@@ -49,6 +87,18 @@ class FixtureJsonMarketDataProvider:
                 f"No source snapshots found in {self._settings.source_fixture_dir}"
             )
         return snapshots[-1].stem
+
+    def list_open_biz_dates(
+        self,
+        *,
+        start_biz_date: str,
+        end_biz_date: str,
+    ) -> list[str]:
+        return [
+            path.stem
+            for path in self._list_snapshot_paths()
+            if start_biz_date <= path.stem <= end_biz_date
+        ]
 
     def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
@@ -113,6 +163,30 @@ class AkshareMarketDataProvider:
                 f"between {start_date.isoformat()} and {end_date.isoformat()}"
             )
         return str(frame.iloc[-1]["日期"])
+
+    def list_open_biz_dates(
+        self,
+        *,
+        start_biz_date: str,
+        end_biz_date: str,
+    ) -> list[str]:
+        if not self._settings.source_symbols:
+            raise ValueError("AKShare provider requires at least one source symbol")
+        probe_symbol = _to_akshare_hist_symbol(self._settings.source_symbols[0])
+        frame = self._ak.stock_zh_a_hist(
+            symbol=probe_symbol,
+            period="daily",
+            start_date=start_biz_date.replace("-", ""),
+            end_date=end_biz_date.replace("-", ""),
+            adjust="",
+        )
+        return sorted(
+            {
+                str(row["日期"])
+                for row in _frame_records(frame)
+                if row.get("日期") not in (None, "")
+            }
+        )
 
     def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
@@ -215,7 +289,9 @@ class TushareMarketDataProvider:
         end_date = datetime.now(CN_TZ).date()
         start_date = end_date - timedelta(days=30)
         records = _frame_records(
-            self._pro.trade_cal(
+            _call_tushare_dataset(
+                self._pro,
+                dataset_name="trade_cal",
                 exchange=self._settings.tushare_exchange,
                 start_date=start_date.strftime("%Y%m%d"),
                 end_date=end_date.strftime("%Y%m%d"),
@@ -232,6 +308,27 @@ class TushareMarketDataProvider:
             )
         return open_dates[-1]
 
+    def list_open_biz_dates(
+        self,
+        *,
+        start_biz_date: str,
+        end_biz_date: str,
+    ) -> list[str]:
+        records = _frame_records(
+            _call_tushare_dataset(
+                self._pro,
+                dataset_name="trade_cal",
+                exchange=self._settings.tushare_exchange,
+                start_date=start_biz_date.replace("-", ""),
+                end_date=end_biz_date.replace("-", ""),
+            )
+        )
+        return sorted(
+            _normalize_tushare_trade_date(str(item["cal_date"]))
+            for item in records
+            if _is_tushare_trade_open(item.get("is_open"))
+        )
+
     def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
         trade_date = target_biz_date.replace("-", "")
@@ -241,21 +338,43 @@ class TushareMarketDataProvider:
         tracked_symbols = {item["symbol"] for item in stock_basic_records}
         if not tracked_symbols:
             raise RuntimeError("Tushare provider returned no stock_basic rows for the configured universe")
+        tracked_tushare_codes = {
+            _symbol_to_tushare_code(str(item["symbol"]))
+            for item in stock_basic_records
+        }
 
         trade_calendar = self._load_trade_calendar_row(
             target_biz_date=target_biz_date,
             fetched_at=fetched_at,
         )
         daily_rows = _index_records_by_key(
-            _frame_records(self._pro.daily(trade_date=trade_date)),
+            _frame_records(
+                _call_tushare_dataset(
+                    self._pro,
+                    dataset_name="daily",
+                    trade_date=trade_date,
+                )
+            ),
             key="ts_code",
         )
         daily_basic_rows = _index_records_by_key(
-            _frame_records(self._pro.daily_basic(trade_date=trade_date)),
+            _frame_records(
+                _call_tushare_dataset(
+                    self._pro,
+                    dataset_name="daily_basic",
+                    trade_date=trade_date,
+                )
+            ),
             key="ts_code",
         )
         stk_limit_rows = _index_records_by_key(
-            _frame_records(self._pro.stk_limit(trade_date=trade_date)),
+            _frame_records(
+                _call_tushare_dataset(
+                    self._pro,
+                    dataset_name="stk_limit",
+                    trade_date=trade_date,
+                )
+            ),
             key="ts_code",
         )
         moneyflow_rows, moneyflow_warning = _load_tushare_optional_records(
@@ -274,28 +393,21 @@ class TushareMarketDataProvider:
             trade_date=trade_date,
         )
         financial_period_candidates = _candidate_tushare_financial_periods(target_biz_date)
-        (
-            financial_period,
-            fina_indicator_rows,
-            fina_indicator_warning,
-        ) = _resolve_tushare_financial_period(
+        financial_bundle = _resolve_tushare_financial_bundle(
             self._pro,
             candidate_periods=financial_period_candidates,
+            tracked_symbols=tracked_tushare_codes,
         )
-        income_rows, income_warning = _load_tushare_period_records(
-            self._pro,
-            dataset_name="income_vip",
-            period=financial_period,
+        financial_period_by_symbol = {
+            symbol: _normalize_tushare_trade_date(period)
+            for symbol, period in sorted(financial_bundle.report_period_by_symbol.items())
+        }
+        financial_periods = sorted(
+            set(financial_period_by_symbol.values()),
+            reverse=True,
         )
-        balancesheet_rows, balancesheet_warning = _load_tushare_period_records(
-            self._pro,
-            dataset_name="balancesheet_vip",
-            period=financial_period,
-        )
-        cashflow_rows, cashflow_warning = _load_tushare_period_records(
-            self._pro,
-            dataset_name="cashflow_vip",
-            period=financial_period,
+        missing_financial_symbols = sorted(
+            tracked_symbols.difference(set(financial_period_by_symbol))
         )
 
         daily_bars: list[dict[str, object]] = []
@@ -351,18 +463,21 @@ class TushareMarketDataProvider:
                 moneyflow_warning,
                 top_list_warning,
                 moneyflow_hsgt_warning,
-                fina_indicator_warning,
-                income_warning,
-                balancesheet_warning,
-                cashflow_warning,
+                *financial_bundle.warnings,
             )
             if warning is not None
         ]
         if north_money_million is not None:
             highlights.append(f"north_money_million: {north_money_million:.2f}")
-        if financial_period is not None:
+        if financial_periods:
+            if len(financial_periods) == 1:
+                highlights.append(f"financial_report_period: {financial_periods[0]}")
+            else:
+                highlights.append(
+                    "financial_report_periods: " + ", ".join(financial_periods)
+                )
             highlights.append(
-                f"financial_report_period: {_normalize_tushare_trade_date(financial_period)}"
+                f"financial_sidecar_coverage: {len(financial_period_by_symbol)}/{len(stock_basic_records)}"
             )
         highlights.extend(warnings)
         capital_feature_overrides = _build_tushare_capital_feature_overrides(
@@ -372,11 +487,11 @@ class TushareMarketDataProvider:
         )
         fundamental_feature_overrides = _build_tushare_fundamental_feature_overrides(
             daily_bars=daily_bars,
-            financial_period=financial_period,
-            fina_indicator_rows=fina_indicator_rows,
-            income_rows=income_rows,
-            balancesheet_rows=balancesheet_rows,
-            cashflow_rows=cashflow_rows,
+            report_period_by_symbol=financial_bundle.report_period_by_symbol,
+            fina_indicator_rows=list(financial_bundle.fina_indicator_rows),
+            income_rows=list(financial_bundle.income_rows),
+            balancesheet_rows=list(financial_bundle.balancesheet_rows),
+            cashflow_rows=list(financial_bundle.cashflow_rows),
         )
 
         return MarketDataSnapshot(
@@ -413,14 +528,15 @@ class TushareMarketDataProvider:
                 "top_list_count": len(top_list_rows),
                 "north_money_million": north_money_million,
                 "financial_report_period": (
-                    _normalize_tushare_trade_date(financial_period)
-                    if financial_period is not None
-                    else None
+                    financial_periods[0] if financial_periods else None
                 ),
-                "fina_indicator_count": len(fina_indicator_rows),
-                "income_count": len(income_rows),
-                "balancesheet_count": len(balancesheet_rows),
-                "cashflow_count": len(cashflow_rows),
+                "financial_report_periods": financial_periods,
+                "financial_report_period_by_symbol": financial_period_by_symbol,
+                "financial_missing_symbols": missing_financial_symbols,
+                "fina_indicator_count": len(financial_bundle.fina_indicator_rows),
+                "income_count": len(financial_bundle.income_rows),
+                "balancesheet_count": len(financial_bundle.balancesheet_rows),
+                "cashflow_count": len(financial_bundle.cashflow_rows),
                 "fundamental_feature_count": len(fundamental_feature_overrides),
                 "warnings": warnings,
             },
@@ -430,7 +546,9 @@ class TushareMarketDataProvider:
 
     def _load_stock_basic_records(self) -> list[dict[str, object]]:
         records = _frame_records(
-            self._pro.stock_basic(
+            _call_tushare_dataset(
+                self._pro,
+                dataset_name="stock_basic",
                 exchange="",
                 list_status="L",
                 fields=(
@@ -466,7 +584,9 @@ class TushareMarketDataProvider:
         fetched_at: str,
     ) -> dict[str, object]:
         records = _frame_records(
-            self._pro.trade_cal(
+            _call_tushare_dataset(
+                self._pro,
+                dataset_name="trade_cal",
                 exchange=self._settings.tushare_exchange,
                 start_date=target_biz_date.replace("-", ""),
                 end_date=target_biz_date.replace("-", ""),
@@ -535,32 +655,103 @@ def _load_tushare_optional_records(
     trade_date: str,
 ) -> tuple[list[dict[str, object]], str | None]:
     try:
-        method = getattr(pro_client, dataset_name)
-        return _frame_records(method(trade_date=trade_date)), None
-    except Exception as exc:
-        return [], f"{dataset_name}_unavailable:{exc.__class__.__name__}"
+        return _frame_records(
+            _call_tushare_dataset(
+                pro_client,
+                dataset_name=dataset_name,
+                trade_date=trade_date,
+            )
+        ), None
+    except TushareRequestError as exc:
+        return [], f"{dataset_name}_unavailable:{exc.category}"
 
 
-def _resolve_tushare_financial_period(
+def _resolve_tushare_financial_bundle(
     pro_client: Any,
     *,
     candidate_periods: list[str],
-) -> tuple[str | None, list[dict[str, object]], str | None]:
-    warnings: list[str] = []
-    for period in candidate_periods:
-        records, warning = _load_tushare_period_records(
-            pro_client,
-            dataset_name="fina_indicator_vip",
-            period=period,
-        )
-        if records:
-            return period, records, None
-        if warning is not None:
-            warnings.append(f"{period}:{warning}")
+    tracked_symbols: set[str],
+) -> TushareFinancialBundle:
+    unresolved_symbols = set(tracked_symbols)
+    selected_period_by_symbol: dict[str, str] = {}
+    selected_rows_by_dataset: dict[str, dict[str, dict[str, object]]] = {
+        dataset_name: {}
+        for dataset_name in TUSHARE_FINANCIAL_DATASETS
+    }
+    dataset_has_rows = {
+        dataset_name: False
+        for dataset_name in TUSHARE_FINANCIAL_DATASETS
+    }
+    dataset_request_warnings = {
+        dataset_name: set()
+        for dataset_name in TUSHARE_FINANCIAL_DATASETS
+    }
 
-    if warnings:
-        return None, [], "fina_indicator_vip_unavailable:" + "|".join(warnings)
-    return None, [], "fina_indicator_vip_unavailable:empty_recent_periods"
+    for period in candidate_periods:
+        period_rows_by_dataset: dict[str, dict[str, dict[str, object]]] = {}
+        for dataset_name in TUSHARE_FINANCIAL_DATASETS:
+            records, warning = _load_tushare_period_records(
+                pro_client,
+                dataset_name=dataset_name,
+                period=period,
+            )
+            if records:
+                dataset_has_rows[dataset_name] = True
+            if warning is not None and not warning.endswith("empty_period"):
+                dataset_request_warnings[dataset_name].add(warning)
+            period_rows_by_dataset[dataset_name] = _index_tushare_records_by_symbol(
+                records
+            )
+
+        period_symbols = set()
+        for dataset_name in TUSHARE_FINANCIAL_DATASETS:
+            period_symbols.update(period_rows_by_dataset[dataset_name])
+        eligible_symbols = sorted(period_symbols.intersection(unresolved_symbols))
+        for symbol in eligible_symbols:
+            selected_period_by_symbol[symbol] = period
+            for dataset_name in TUSHARE_FINANCIAL_DATASETS:
+                row = period_rows_by_dataset[dataset_name].get(symbol)
+                if row is not None:
+                    selected_rows_by_dataset[dataset_name][symbol] = row
+            unresolved_symbols.remove(symbol)
+
+        if not unresolved_symbols:
+            break
+
+    warnings: list[str] = []
+    for dataset_name in TUSHARE_FINANCIAL_DATASETS:
+        if dataset_has_rows[dataset_name]:
+            continue
+        if dataset_request_warnings[dataset_name]:
+            warnings.append(sorted(dataset_request_warnings[dataset_name])[0])
+        else:
+            warnings.append(f"{dataset_name}_unavailable:empty_recent_periods")
+    if unresolved_symbols:
+        warnings.append("financial_sidecar_missing:" + ",".join(sorted(unresolved_symbols)))
+
+    return TushareFinancialBundle(
+        report_period_by_symbol={
+            symbol: selected_period_by_symbol[symbol]
+            for symbol in sorted(selected_period_by_symbol)
+        },
+        fina_indicator_rows=tuple(
+            selected_rows_by_dataset["fina_indicator_vip"][symbol]
+            for symbol in sorted(selected_rows_by_dataset["fina_indicator_vip"])
+        ),
+        income_rows=tuple(
+            selected_rows_by_dataset["income_vip"][symbol]
+            for symbol in sorted(selected_rows_by_dataset["income_vip"])
+        ),
+        balancesheet_rows=tuple(
+            selected_rows_by_dataset["balancesheet_vip"][symbol]
+            for symbol in sorted(selected_rows_by_dataset["balancesheet_vip"])
+        ),
+        cashflow_rows=tuple(
+            selected_rows_by_dataset["cashflow_vip"][symbol]
+            for symbol in sorted(selected_rows_by_dataset["cashflow_vip"])
+        ),
+        warnings=tuple(warnings),
+    )
 
 
 def _load_tushare_period_records(
@@ -572,13 +763,89 @@ def _load_tushare_period_records(
     if period is None:
         return [], f"{dataset_name}_unavailable:no_financial_period"
     try:
-        method = getattr(pro_client, dataset_name)
-        records = _frame_records(method(period=period))
+        records = _frame_records(
+            _call_tushare_dataset(
+                pro_client,
+                dataset_name=dataset_name,
+                period=period,
+            )
+        )
         if records:
             return records, None
         return [], f"{dataset_name}_unavailable:empty_period"
+    except TushareRequestError as exc:
+        return [], f"{dataset_name}_unavailable:{exc.category}"
+
+
+def _index_tushare_records_by_symbol(
+    records: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    indexed: dict[str, dict[str, object]] = {}
+    for item in records:
+        ts_code = item.get("ts_code")
+        if ts_code in (None, ""):
+            continue
+        symbol = _normalize_tushare_symbol(str(ts_code))
+        existing = indexed.get(symbol)
+        if existing is None or _tushare_record_sort_key(item) >= _tushare_record_sort_key(existing):
+            indexed[symbol] = item
+    return indexed
+
+
+def _tushare_record_sort_key(item: dict[str, object]) -> tuple[str, str, str]:
+    return (
+        _normalize_tushare_sortable_date(item.get("f_ann_date")),
+        _normalize_tushare_sortable_date(item.get("ann_date")),
+        _normalize_tushare_sortable_date(item.get("end_date")),
+    )
+
+
+def _normalize_tushare_sortable_date(raw_value: object) -> str:
+    if raw_value in (None, ""):
+        return ""
+    normalized = str(raw_value).strip()
+    if len(normalized) == 10 and normalized.count("-") == 2:
+        return normalized.replace("-", "")
+    return normalized
+
+
+def _call_tushare_dataset(
+    pro_client: Any,
+    *,
+    dataset_name: str,
+    **kwargs: object,
+):
+    try:
+        method = getattr(pro_client, dataset_name)
+        return method(**kwargs)
     except Exception as exc:
-        return [], f"{dataset_name}_unavailable:{exc.__class__.__name__}"
+        raise _wrap_tushare_request_error(dataset_name, exc) from exc
+
+
+def _wrap_tushare_request_error(
+    dataset_name: str,
+    exc: Exception,
+) -> TushareRequestError:
+    message = str(exc).strip() or exc.__class__.__name__
+    normalized_message = message.lower()
+    category = "request_failed"
+
+    if "没有接口访问权限" in message:
+        category = "permission_denied"
+    elif "积分" in message or "权限" in message:
+        category = "permission_denied"
+    elif "proxy" in normalized_message:
+        category = "proxy_error"
+    elif "nameresolutionerror" in normalized_message or "nodename nor servname" in normalized_message:
+        category = "dns_error"
+    elif "connection" in normalized_message:
+        category = "connection_error"
+
+    return TushareRequestError(
+        dataset_name=dataset_name,
+        category=category,
+        message=message,
+    )
 
 
 def _normalize_tushare_symbol(ts_code: str) -> str:
@@ -764,7 +1031,7 @@ def _build_tushare_capital_feature_overrides(
 def _build_tushare_fundamental_feature_overrides(
     *,
     daily_bars: list[dict[str, object]],
-    financial_period: str | None,
+    report_period_by_symbol: dict[str, str],
     fina_indicator_rows: list[dict[str, object]],
     income_rows: list[dict[str, object]],
     balancesheet_rows: list[dict[str, object]],
@@ -789,11 +1056,10 @@ def _build_tushare_fundamental_feature_overrides(
     }
 
     rows: list[dict[str, object]] = []
-    normalized_period = (
-        _normalize_tushare_trade_date(financial_period)
-        if financial_period is not None
-        else None
-    )
+    normalized_period_by_symbol = {
+        symbol: _normalize_tushare_trade_date(period)
+        for symbol, period in report_period_by_symbol.items()
+    }
     for symbol, trade_date in trade_date_by_symbol.items():
         fina_indicator_row = fina_indicator_by_symbol.get(symbol, {})
         income_row = income_by_symbol.get(symbol, {})
@@ -859,7 +1125,7 @@ def _build_tushare_fundamental_feature_overrides(
             {
                 "symbol": symbol,
                 "trade_date": trade_date,
-                "report_period": normalized_period,
+                "report_period": normalized_period_by_symbol.get(symbol),
                 "ann_date": ann_date,
                 "roe_dt": roe_dt,
                 "grossprofit_margin": grossprofit_margin,

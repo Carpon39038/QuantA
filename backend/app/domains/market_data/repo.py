@@ -760,6 +760,135 @@ def _query_capital_feature_asof_rows(
     ]
 
 
+def _query_fundamental_feature_asof_rows(
+    connection,
+    *,
+    snapshot_id: str,
+    symbol: str,
+    date_from: str | None,
+    date_to: str | None,
+) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """
+        WITH target AS (
+          SELECT publish_seq
+          FROM artifact_publish
+          WHERE snapshot_id = ?
+        ),
+        ranked AS (
+          SELECT
+            ff.trade_date,
+            ff.report_period,
+            ff.ann_date,
+            ff.roe_dt,
+            ff.grossprofit_margin,
+            ff.debt_to_assets,
+            ff.total_revenue,
+            ff.net_profit_attr_p,
+            ff.n_cashflow_act,
+            ff.total_assets,
+            ff.total_liab,
+            ff.cash_to_profit,
+            ff.fundamental_score,
+            ff.updated_at,
+            ff.snapshot_id AS effective_snapshot_id,
+            ap.publish_seq AS effective_publish_seq,
+            ROW_NUMBER() OVER (
+              PARTITION BY ff.symbol, ff.trade_date
+              ORDER BY ap.publish_seq DESC
+            ) AS row_num
+          FROM fundamental_feature_daily ff
+          JOIN artifact_publish ap
+            ON ap.snapshot_id = ff.snapshot_id
+          JOIN target
+            ON ap.publish_seq <= target.publish_seq
+          WHERE ff.symbol = ?
+            AND (? IS NULL OR ff.trade_date >= CAST(? AS DATE))
+            AND (? IS NULL OR ff.trade_date <= CAST(? AS DATE))
+        )
+        SELECT
+          trade_date,
+          report_period,
+          ann_date,
+          roe_dt,
+          grossprofit_margin,
+          debt_to_assets,
+          total_revenue,
+          net_profit_attr_p,
+          n_cashflow_act,
+          total_assets,
+          total_liab,
+          cash_to_profit,
+          fundamental_score,
+          updated_at,
+          effective_snapshot_id,
+          effective_publish_seq
+        FROM ranked
+        WHERE row_num = 1
+        ORDER BY trade_date ASC
+        """,
+        [
+            snapshot_id,
+            symbol,
+            date_from,
+            date_from,
+            date_to,
+            date_to,
+        ],
+    ).fetchall()
+
+    return [
+        {
+            "trade_date": _isoformat(trade_date),
+            "report_period": _isoformat(report_period),
+            "ann_date": _isoformat(ann_date),
+            "roe_dt": float(roe_dt) if roe_dt is not None else None,
+            "grossprofit_margin": float(grossprofit_margin)
+            if grossprofit_margin is not None
+            else None,
+            "debt_to_assets": float(debt_to_assets)
+            if debt_to_assets is not None
+            else None,
+            "total_revenue": float(total_revenue) if total_revenue is not None else None,
+            "net_profit_attr_p": float(net_profit_attr_p)
+            if net_profit_attr_p is not None
+            else None,
+            "n_cashflow_act": float(n_cashflow_act)
+            if n_cashflow_act is not None
+            else None,
+            "total_assets": float(total_assets) if total_assets is not None else None,
+            "total_liab": float(total_liab) if total_liab is not None else None,
+            "cash_to_profit": float(cash_to_profit)
+            if cash_to_profit is not None
+            else None,
+            "fundamental_score": float(fundamental_score)
+            if fundamental_score is not None
+            else None,
+            "updated_at": _isoformat(updated_at),
+            "effective_snapshot_id": str(effective_snapshot_id),
+            "effective_publish_seq": int(effective_publish_seq),
+        }
+        for (
+            trade_date,
+            report_period,
+            ann_date,
+            roe_dt,
+            grossprofit_margin,
+            debt_to_assets,
+            total_revenue,
+            net_profit_attr_p,
+            n_cashflow_act,
+            total_assets,
+            total_liab,
+            cash_to_profit,
+            fundamental_score,
+            updated_at,
+            effective_snapshot_id,
+            effective_publish_seq,
+        ) in rows
+    ]
+
+
 def _build_range_summary(items: list[dict[str, object]]) -> dict[str, object]:
     if not items:
         return {"row_count": 0, "date_from": None, "date_to": None}
@@ -1049,6 +1178,15 @@ def load_stock_snapshot(
             "available_series": {
                 "daily_bar": _build_range_summary(daily_bar_items),
                 "price_series": _build_range_summary(price_series_items),
+                "fundamental_feature": _build_range_summary(
+                    _query_fundamental_feature_asof_rows(
+                        connection,
+                        snapshot_id=str(published_snapshot["snapshot_id"]),
+                        symbol=symbol,
+                        date_from=None,
+                        date_to=None,
+                    )
+                ),
             },
             "latest_daily_bar": daily_bar_items[-1] if daily_bar_items else None,
             "latest_price_bar": price_series_items[-1] if price_series_items else None,
@@ -1224,6 +1362,42 @@ def load_stock_capital_flow(
             },
             "range": _build_range_summary(items),
             "latest_capital_feature": items[-1] if items else None,
+            "items": items,
+        }
+    finally:
+        connection.close()
+
+
+def load_stock_fundamentals(
+    settings: AppSettings,
+    *,
+    symbol: str,
+    snapshot_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, object]:
+    connection = _open_connection(settings)
+    try:
+        stock = _fetch_stock_profile(connection, symbol)
+        published_snapshot = _fetch_published_snapshot_meta(connection, snapshot_id)
+        items = _query_fundamental_feature_asof_rows(
+            connection,
+            snapshot_id=str(published_snapshot["snapshot_id"]),
+            symbol=symbol,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        return {
+            "symbol": stock["symbol"],
+            "display_name": stock["display_name"],
+            "as_of": {
+                "snapshot_id": published_snapshot["snapshot_id"],
+                "publish_seq": published_snapshot["publish_seq"],
+                "raw_snapshot_id": published_snapshot["raw_snapshot_id"],
+            },
+            "range": _build_range_summary(items),
+            "latest_fundamental_feature": items[-1] if items else None,
             "items": items,
         }
     finally:

@@ -214,6 +214,9 @@ def main() -> int:
         capital_flow_payload = fetch_json(
             f"{frontend_origin}/api/v1/stocks/300750.SZ/capital-flow"
         )
+        fundamentals_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/fundamentals"
+        )
         screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
         screener_results_payload = fetch_json(
             f"{backend_origin}/api/v1/screener/runs/{screener_latest_payload['run_id']}/results"
@@ -308,6 +311,7 @@ def main() -> int:
             backend_payload["screener"]["top_candidates"][0]["capital_score"] is not None
         )
         assert stock_snapshot_payload["available_series"]["daily_bar"]["row_count"] == 3
+        assert stock_snapshot_payload["available_series"]["fundamental_feature"]["row_count"] == 0
         assert stock_snapshot_payload["latest_daily_bar"]["trade_date"] == "2026-03-27"
         assert abs(stock_snapshot_payload["latest_price_bar"]["close"] - 266.4) < 1e-6
         assert len(latest_raw_kline_payload["items"]) == 3
@@ -337,6 +341,8 @@ def main() -> int:
         assert capital_flow_payload["range"]["row_count"] == 3
         assert capital_flow_payload["latest_capital_feature"]["effective_snapshot_id"] == "snapshot_2026-03-27_ready_001"
         assert capital_flow_payload["latest_capital_feature"]["has_dragon_tiger"] is True
+        assert fundamentals_payload["range"]["row_count"] == 0
+        assert fundamentals_payload["latest_fundamental_feature"] is None
         assert screener_latest_payload["run_id"].startswith("screener_run_")
         assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])
         assert screener_latest_payload["result_count"] >= 3
@@ -417,6 +423,7 @@ def main() -> int:
         assert "观察名单" in frontend_html
         assert "个股详情" in frontend_html
         assert "价格轨迹" in frontend_html
+        assert "财务侧" in frontend_html
 
         print("[app-smoke] backend and frontend are healthy")
         print(

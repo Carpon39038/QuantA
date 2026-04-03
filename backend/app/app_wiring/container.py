@@ -10,6 +10,7 @@ from backend.app.domains.market_data.repo import (
     load_latest_published_snapshot,
     load_screener_run,
     load_stock_capital_flow,
+    load_stock_fundamentals,
     load_stock_indicators,
     load_stock_kline_asof,
     load_stock_snapshot,
@@ -126,6 +127,26 @@ class QuantAContainer:
         date_to: str | None = None,
     ) -> dict[str, object]:
         payload = load_stock_capital_flow(
+            self.settings,
+            symbol=symbol,
+            snapshot_id=snapshot_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return {
+            "api_contract_version": "0.1",
+            **payload,
+        }
+
+    def stock_fundamentals_payload(
+        self,
+        *,
+        symbol: str,
+        snapshot_id: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> dict[str, object]:
+        payload = load_stock_fundamentals(
             self.settings,
             symbol=symbol,
             snapshot_id=snapshot_id,

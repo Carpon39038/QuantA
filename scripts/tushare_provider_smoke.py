@@ -220,45 +220,56 @@ class FakeTusharePro:
         period = kwargs.get("period")
         if period == "20260331":
             return FakeFrame([])
-        assert period == "20251231"
+        if period == "20251231":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": "300750.SZ",
+                        "ann_date": "20260327",
+                        "end_date": "20251231",
+                        "roe_dt": 23.4,
+                        "grossprofit_margin": 24.8,
+                        "debt_to_assets": 42.1,
+                        "ocf_to_profit": 1.24,
+                    }
+                ]
+            )
+        assert period == "20250930"
         return FakeFrame(
             [
                 {
-                    "ts_code": "300750.SZ",
-                    "ann_date": "20260327",
-                    "end_date": "20251231",
-                    "roe_dt": 23.4,
-                    "grossprofit_margin": 24.8,
-                    "debt_to_assets": 42.1,
-                    "ocf_to_profit": 1.24,
-                },
-                {
                     "ts_code": "002475.SZ",
-                    "ann_date": "20260328",
-                    "end_date": "20251231",
+                    "ann_date": "20251105",
+                    "end_date": "20250930",
                     "roe_dt": 14.2,
                     "grossprofit_margin": 12.1,
                     "debt_to_assets": 61.0,
                     "ocf_to_profit": 0.65,
-                },
+                }
             ]
         )
 
     def income_vip(self, **kwargs) -> FakeFrame:
-        assert kwargs.get("period") == "20251231"
+        period = kwargs.get("period")
+        if period == "20251231":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": "300750.SZ",
+                        "ann_date": "20260327",
+                        "end_date": "20251231",
+                        "total_revenue": 362_013_000_000.0,
+                        "n_income_attr_p": 45_210_000_000.0,
+                    }
+                ]
+            )
+        assert period == "20250930"
         return FakeFrame(
             [
                 {
-                    "ts_code": "300750.SZ",
-                    "ann_date": "20260327",
-                    "end_date": "20251231",
-                    "total_revenue": 362_013_000_000.0,
-                    "n_income_attr_p": 45_210_000_000.0,
-                },
-                {
                     "ts_code": "002475.SZ",
-                    "ann_date": "20260328",
-                    "end_date": "20251231",
+                    "ann_date": "20251105",
+                    "end_date": "20250930",
                     "total_revenue": 248_330_000_000.0,
                     "n_income_attr_p": 12_500_000_000.0,
                 },
@@ -266,20 +277,26 @@ class FakeTusharePro:
         )
 
     def balancesheet_vip(self, **kwargs) -> FakeFrame:
-        assert kwargs.get("period") == "20251231"
+        period = kwargs.get("period")
+        if period == "20251231":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": "300750.SZ",
+                        "ann_date": "20260327",
+                        "end_date": "20251231",
+                        "total_assets": 812_450_000_000.0,
+                        "total_liab": 342_000_000_000.0,
+                    },
+                ]
+            )
+        assert period == "20250930"
         return FakeFrame(
             [
                 {
-                    "ts_code": "300750.SZ",
-                    "ann_date": "20260327",
-                    "end_date": "20251231",
-                    "total_assets": 812_450_000_000.0,
-                    "total_liab": 342_000_000_000.0,
-                },
-                {
                     "ts_code": "002475.SZ",
-                    "ann_date": "20260328",
-                    "end_date": "20251231",
+                    "ann_date": "20251105",
+                    "end_date": "20250930",
                     "total_assets": 229_700_000_000.0,
                     "total_liab": 140_100_000_000.0,
                 },
@@ -287,19 +304,25 @@ class FakeTusharePro:
         )
 
     def cashflow_vip(self, **kwargs) -> FakeFrame:
-        assert kwargs.get("period") == "20251231"
+        period = kwargs.get("period")
+        if period == "20251231":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": "300750.SZ",
+                        "ann_date": "20260327",
+                        "end_date": "20251231",
+                        "n_cashflow_act": 56_220_000_000.0,
+                    },
+                ]
+            )
+        assert period == "20250930"
         return FakeFrame(
             [
                 {
-                    "ts_code": "300750.SZ",
-                    "ann_date": "20260327",
-                    "end_date": "20251231",
-                    "n_cashflow_act": 56_220_000_000.0,
-                },
-                {
                     "ts_code": "002475.SZ",
-                    "ann_date": "20260328",
-                    "end_date": "20251231",
+                    "ann_date": "20251105",
+                    "end_date": "20250930",
                     "n_cashflow_act": 8_120_000_000.0,
                 },
             ]
@@ -324,6 +347,10 @@ def main() -> int:
 
         latest_biz_date = provider.latest_available_biz_date()
         assert latest_biz_date == "2026-04-01"
+        assert provider.list_open_biz_dates(
+            start_biz_date="2026-03-31",
+            end_biz_date="2026-04-01",
+        ) == ["2026-03-31", "2026-04-01"]
 
         snapshot = provider.fetch_daily_snapshot()
         assert snapshot.provider == "tushare"
@@ -340,11 +367,23 @@ def main() -> int:
         assert snapshot.source_watermark["top_list_count"] == 1
         assert snapshot.source_watermark["north_money_million"] == 128.6
         assert snapshot.source_watermark["financial_report_period"] == "2025-12-31"
+        assert snapshot.source_watermark["financial_report_periods"] == [
+            "2025-12-31",
+            "2025-09-30",
+        ]
+        assert snapshot.source_watermark["financial_report_period_by_symbol"] == {
+            "002475.SZ": "2025-09-30",
+            "300750.SZ": "2025-12-31",
+        }
         assert snapshot.source_watermark["fina_indicator_count"] == 2
         assert snapshot.source_watermark["income_count"] == 2
         assert snapshot.source_watermark["balancesheet_count"] == 2
         assert snapshot.source_watermark["cashflow_count"] == 2
-        assert "financial_report_period: 2025-12-31" in snapshot.market_overview["highlights"]
+        assert (
+            "financial_report_periods: 2025-12-31, 2025-09-30"
+            in snapshot.market_overview["highlights"]
+        )
+        assert "financial_sidecar_coverage: 2/2" in snapshot.market_overview["highlights"]
 
         bar_by_symbol = {item["symbol"]: item for item in snapshot.daily_bars}
         assert bar_by_symbol["300750.SZ"]["volume"] == 18234567.0
@@ -376,6 +415,8 @@ def main() -> int:
         assert fundamental_by_symbol["300750.SZ"]["total_revenue"] == 362_013_000_000.0
         assert round(float(fundamental_by_symbol["300750.SZ"]["cash_to_profit"]), 4) == 1.2435
         assert round(float(fundamental_by_symbol["300750.SZ"]["fundamental_score"]), 2) == 75.08
+        assert fundamental_by_symbol["002475.SZ"]["report_period"] == "2025-09-30"
+        assert fundamental_by_symbol["002475.SZ"]["ann_date"] == "2025-11-05"
         assert round(float(fundamental_by_symbol["002475.SZ"]["fundamental_score"]), 2) == 37.34
 
         print("[tushare-provider-smoke] tushare provider mapping is healthy")

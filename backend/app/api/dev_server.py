@@ -98,6 +98,18 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                             ),
                         )
                         return
+
+                    if path_parts[4] == "fundamentals":
+                        self._send_json(
+                            200,
+                            container.stock_fundamentals_payload(
+                                symbol=symbol,
+                                snapshot_id=_query_value(query, "snapshot_id"),
+                                date_from=_query_value(query, "date_from"),
+                                date_to=_query_value(query, "date_to"),
+                            ),
+                        )
+                        return
                 except LookupError as exc:
                     self._send_json(
                         404,

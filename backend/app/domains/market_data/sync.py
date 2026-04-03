@@ -9,7 +9,10 @@ from backend.app.domains.analysis.bootstrap import materialize_analysis_snapshot
 from backend.app.domains.market_data.bootstrap import ensure_dev_duckdb
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.shared.providers.duckdb import connect_duckdb
-from backend.app.shared.providers.market_data_source import build_market_data_provider
+from backend.app.shared.providers.market_data_source import (
+    MarketDataProvider,
+    build_market_data_provider,
+)
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -24,6 +27,78 @@ def sync_market_data(
     ensure_dev_duckdb(settings)
 
     provider = build_market_data_provider(settings)
+    return _sync_market_data_with_provider(
+        settings,
+        provider=provider,
+        biz_date=biz_date,
+    )
+
+
+def backfill_market_data(
+    settings: AppSettings,
+    *,
+    start_biz_date: str,
+    end_biz_date: str,
+) -> dict[str, object]:
+    ensure_runtime_directories(settings)
+    ensure_dev_duckdb(settings)
+
+    provider = build_market_data_provider(settings)
+    open_biz_dates = provider.list_open_biz_dates(
+        start_biz_date=start_biz_date,
+        end_biz_date=end_biz_date,
+    )
+    if not open_biz_dates:
+        raise RuntimeError(
+            f"Source provider {settings.source_provider} returned no open biz dates "
+            f"between {start_biz_date} and {end_biz_date}"
+        )
+
+    existing_biz_dates = _existing_raw_snapshot_biz_dates(
+        settings,
+        start_biz_date=start_biz_date,
+        end_biz_date=end_biz_date,
+    )
+    synced_summaries: list[dict[str, object]] = []
+    skipped_existing_biz_dates: list[str] = []
+    for biz_date in open_biz_dates:
+        if biz_date in existing_biz_dates:
+            skipped_existing_biz_dates.append(biz_date)
+            continue
+        synced_summaries.append(
+            _sync_market_data_with_provider(
+                settings,
+                provider=provider,
+                biz_date=biz_date,
+            )
+        )
+
+    return {
+        "provider": settings.source_provider,
+        "start_biz_date": start_biz_date,
+        "end_biz_date": end_biz_date,
+        "open_biz_dates": open_biz_dates,
+        "synced_biz_dates": [summary["biz_date"] for summary in synced_summaries],
+        "skipped_existing_biz_dates": skipped_existing_biz_dates,
+        "snapshot_count": len(synced_summaries),
+        "snapshots": [
+            {
+                "biz_date": summary["biz_date"],
+                "snapshot_id": summary["snapshot_id"],
+                "raw_snapshot_id": summary["raw_snapshot_id"],
+                "status": summary["status"],
+            }
+            for summary in synced_summaries
+        ],
+    }
+
+
+def _sync_market_data_with_provider(
+    settings: AppSettings,
+    *,
+    provider: MarketDataProvider,
+    biz_date: str | None = None,
+) -> dict[str, object]:
     _consume_simulated_source_failure(settings, biz_date=biz_date)
     source_snapshot = provider.fetch_daily_snapshot(biz_date=biz_date)
     if not source_snapshot.daily_bars:
@@ -354,6 +429,19 @@ def latest_source_biz_date(settings: AppSettings) -> str:
     return provider.latest_available_biz_date()
 
 
+def list_source_biz_dates(
+    settings: AppSettings,
+    *,
+    start_biz_date: str,
+    end_biz_date: str,
+) -> list[str]:
+    provider = build_market_data_provider(settings)
+    return provider.list_open_biz_dates(
+        start_biz_date=start_biz_date,
+        end_biz_date=end_biz_date,
+    )
+
+
 def _consume_simulated_source_failure(
     settings: AppSettings,
     *,
@@ -388,6 +476,27 @@ def _next_snapshot_seq(connection) -> int:
 def _next_publish_seq(connection) -> int:
     row = connection.execute("SELECT COALESCE(MAX(publish_seq), 0) FROM artifact_publish").fetchone()
     return int(row[0]) + 1
+
+
+def _existing_raw_snapshot_biz_dates(
+    settings: AppSettings,
+    *,
+    start_biz_date: str,
+    end_biz_date: str,
+) -> set[str]:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        rows = connection.execute(
+            """
+            SELECT DISTINCT CAST(biz_date AS VARCHAR)
+            FROM raw_snapshot
+            WHERE biz_date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+            """,
+            [start_biz_date, end_biz_date],
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+    finally:
+        connection.close()
 
 
 def _upsert_stock_basic_rows(connection, *, rows: list[dict[str, object]], updated_at: str) -> None:
@@ -658,13 +767,45 @@ def _print_summary(summary: dict[str, object]) -> None:
         print(f"- inserted_{key}: {value}")
 
 
+def _print_backfill_summary(summary: dict[str, object]) -> None:
+    print("QuantA market data backfill complete:")
+    print(f"- provider: {summary['provider']}")
+    print(f"- start_biz_date: {summary['start_biz_date']}")
+    print(f"- end_biz_date: {summary['end_biz_date']}")
+    print(f"- open_biz_date_count: {len(summary['open_biz_dates'])}")
+    print(f"- synced_biz_date_count: {len(summary['synced_biz_dates'])}")
+    print(f"- skipped_existing_biz_date_count: {len(summary['skipped_existing_biz_dates'])}")
+    if summary["synced_biz_dates"]:
+        print(f"- synced_biz_dates: {', '.join(summary['synced_biz_dates'])}")
+    if summary["skipped_existing_biz_dates"]:
+        print(
+            "- skipped_existing_biz_dates: "
+            + ", ".join(summary["skipped_existing_biz_dates"])
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync market data from the configured source provider.")
     parser.add_argument("--biz-date", default=None, help="Optional target biz_date in YYYY-MM-DD format.")
+    parser.add_argument("--start-biz-date", default=None, help="Optional backfill start biz_date in YYYY-MM-DD format.")
+    parser.add_argument("--end-biz-date", default=None, help="Optional backfill end biz_date in YYYY-MM-DD format.")
     parser.add_argument("--print-summary", action="store_true", help="Print a short sync summary.")
     args = parser.parse_args()
 
     settings = load_settings()
+    if bool(args.start_biz_date) != bool(args.end_biz_date):
+        raise ValueError("--start-biz-date and --end-biz-date must be provided together")
+
+    if args.start_biz_date and args.end_biz_date:
+        summary = backfill_market_data(
+            settings,
+            start_biz_date=args.start_biz_date,
+            end_biz_date=args.end_biz_date,
+        )
+        if args.print_summary:
+            _print_backfill_summary(summary)
+        return 0
+
     summary = sync_market_data(settings, biz_date=args.biz_date)
     if args.print_summary:
         _print_summary(summary)

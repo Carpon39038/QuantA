@@ -518,6 +518,10 @@ def _build_fundamental_feature_rows(
 
     for symbol, series in grouped_rows.items():
         for row in series:
+            override = override_by_key.get((symbol, str(row["trade_date"])))
+            if override is None:
+                continue
+
             base_row = {
                 "symbol": symbol,
                 "trade_date": str(row["trade_date"]),
@@ -536,12 +540,26 @@ def _build_fundamental_feature_rows(
                 "fundamental_score": None,
                 "updated_at": updated_at,
             }
+            for field_name in (
+                "report_period",
+                "ann_date",
+                "roe_dt",
+                "grossprofit_margin",
+                "debt_to_assets",
+                "total_revenue",
+                "net_profit_attr_p",
+                "n_cashflow_act",
+                "total_assets",
+                "total_liab",
+                "cash_to_profit",
+                "fundamental_score",
+            ):
+                if field_name in override:
+                    base_row[field_name] = override[field_name]
 
-            override = override_by_key.get((symbol, str(row["trade_date"])))
-            if override is not None:
+            meaningful_values = [
+                base_row[field_name]
                 for field_name in (
-                    "report_period",
-                    "ann_date",
                     "roe_dt",
                     "grossprofit_margin",
                     "debt_to_assets",
@@ -552,11 +570,10 @@ def _build_fundamental_feature_rows(
                     "total_liab",
                     "cash_to_profit",
                     "fundamental_score",
-                ):
-                    if field_name in override:
-                        base_row[field_name] = override[field_name]
-
-            rows.append(base_row)
+                )
+            ]
+            if any(value is not None for value in meaningful_values):
+                rows.append(base_row)
 
     return rows
 
