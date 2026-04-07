@@ -272,6 +272,13 @@ def _seed_dev_dataset(
             {
                 "daily_bar": "2026-03-27T15:30:00+08:00",
                 "seed": "deterministic dev seed",
+                "shadow_validation": {
+                    "status": "SKIPPED",
+                    "canonical_provider": "fixture_json",
+                    "canonical_symbol_count": 3,
+                    "providers": [],
+                    "message": "fixture_json canonical source skips supplementary validation",
+                },
             },
             ensure_ascii=False,
         ),
@@ -299,6 +306,13 @@ def _seed_dev_dataset(
             {
                 "daily_bar": "2026-03-26T15:30:00+08:00",
                 "seed": "deterministic dev seed",
+                "shadow_validation": {
+                    "status": "SKIPPED",
+                    "canonical_provider": "fixture_json",
+                    "canonical_symbol_count": 3,
+                    "providers": [],
+                    "message": "fixture_json canonical source skips supplementary validation",
+                },
             },
             ensure_ascii=False,
         ),
@@ -376,6 +390,29 @@ def _seed_dev_dataset(
     seeded_any |= _insert_row(connection, "raw_snapshot", latest_raw_snapshot_row)
     seeded_any |= _insert_row(connection, "artifact_publish", previous_artifact_row)
     seeded_any |= _insert_row(connection, "artifact_publish", latest_artifact_row)
+    for snapshot_row in (previous_raw_snapshot_row, latest_raw_snapshot_row):
+        connection.execute(
+            """
+            UPDATE raw_snapshot
+            SET
+              status = ?,
+              required_datasets_json = ?,
+              completeness_json = ?,
+              source_watermark_json = ?,
+              created_at = ?,
+              attempt_no = ?
+            WHERE raw_snapshot_id = ?
+            """,
+            [
+                snapshot_row["status"],
+                snapshot_row["required_datasets_json"],
+                snapshot_row["completeness_json"],
+                snapshot_row["source_watermark_json"],
+                snapshot_row["created_at"],
+                snapshot_row["attempt_no"],
+                snapshot_row["raw_snapshot_id"],
+            ],
+        )
 
     stock_profiles = {
         "300750.SZ": {

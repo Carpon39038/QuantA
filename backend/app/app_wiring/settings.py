@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 
@@ -29,6 +30,16 @@ def _parse_optional_str(name: str) -> str | None:
     return normalized or None
 
 
+def _parse_csv(raw_value: str | None) -> tuple[str, ...]:
+    if raw_value is None:
+        return ()
+    return tuple(
+        item.strip()
+        for item in raw_value.split(",")
+        if item.strip()
+    )
+
+
 def _resolve_runtime_path(root_dir: Path, raw_path: str) -> Path:
     path = Path(raw_path)
     if path.is_absolute():
@@ -50,7 +61,12 @@ class AppSettings:
     disclosure_fixture_dir: Path
     source_provider: str
     disclosure_provider: str
+    source_universe: str
     source_symbols: tuple[str, ...]
+    source_validation_providers: tuple[str, ...]
+    source_validation_close_tolerance_bps: int
+    source_validation_volume_tolerance_bps: int
+    source_validation_amount_tolerance_bps: int
     tushare_token: str | None
     tushare_exchange: str
     source_fail_first_n: int
@@ -82,13 +98,12 @@ def load_settings() -> AppSettings:
         os.environ.get("QUANTA_DUCKDB_PATH", "data/duckdb/quanta.duckdb"),
     )
 
-    source_symbols = tuple(
-        symbol.strip()
-        for symbol in os.environ.get(
-            "QUANTA_SOURCE_SYMBOLS",
-            "300750.SZ,002475.SZ,688017.SH",
-        ).split(",")
-        if symbol.strip()
+    source_universe = os.environ.get("QUANTA_SOURCE_UNIVERSE", "core_operating_40")
+    source_universe_dir = root_dir / "backend/app/fixtures/source_universes"
+    source_symbols = _load_source_symbols(
+        source_universe_dir=source_universe_dir,
+        source_universe=source_universe,
+        raw_source_symbols=os.environ.get("QUANTA_SOURCE_SYMBOLS"),
     )
 
     return AppSettings(
@@ -119,7 +134,26 @@ def load_settings() -> AppSettings:
         ),
         source_provider=os.environ.get("QUANTA_SOURCE_PROVIDER", "fixture_json"),
         disclosure_provider=os.environ.get("QUANTA_DISCLOSURE_PROVIDER", "auto"),
+        source_universe=source_universe,
         source_symbols=source_symbols,
+        source_validation_providers=_parse_csv(
+            os.environ.get(
+                "QUANTA_SOURCE_VALIDATION_PROVIDERS",
+                "akshare,baostock",
+            )
+        ),
+        source_validation_close_tolerance_bps=_parse_int(
+            "QUANTA_SOURCE_VALIDATION_CLOSE_TOLERANCE_BPS",
+            5,
+        ),
+        source_validation_volume_tolerance_bps=_parse_int(
+            "QUANTA_SOURCE_VALIDATION_VOLUME_TOLERANCE_BPS",
+            20,
+        ),
+        source_validation_amount_tolerance_bps=_parse_int(
+            "QUANTA_SOURCE_VALIDATION_AMOUNT_TOLERANCE_BPS",
+            20,
+        ),
         tushare_token=_parse_optional_str("QUANTA_TUSHARE_TOKEN"),
         tushare_exchange=os.environ.get("QUANTA_TUSHARE_EXCHANGE", "SSE"),
         source_fail_first_n=_parse_int("QUANTA_SOURCE_FAIL_FIRST_N", 0),
@@ -137,3 +171,33 @@ def load_settings() -> AppSettings:
         frontend_host=os.environ.get("QUANTA_FRONTEND_HOST", "127.0.0.1"),
         frontend_port=_parse_port("QUANTA_FRONTEND_PORT", 4173),
     )
+
+
+def _load_source_symbols(
+    *,
+    source_universe_dir: Path,
+    source_universe: str,
+    raw_source_symbols: str | None,
+) -> tuple[str, ...]:
+    explicit_symbols = _parse_csv(raw_source_symbols)
+    if explicit_symbols:
+        return explicit_symbols
+
+    universe_path = source_universe_dir / f"{source_universe}.json"
+    if not universe_path.exists():
+        raise FileNotFoundError(
+            f"Unknown source universe {source_universe!r}: {universe_path}"
+        )
+
+    payload = json.loads(universe_path.read_text(encoding="utf-8"))
+    symbols = payload.get("symbols", [])
+    loaded_symbols = tuple(
+        str(item).strip().upper()
+        for item in symbols
+        if str(item).strip()
+    )
+    if not loaded_symbols:
+        raise ValueError(
+            f"Source universe {source_universe!r} defines no symbols: {universe_path}"
+        )
+    return loaded_symbols

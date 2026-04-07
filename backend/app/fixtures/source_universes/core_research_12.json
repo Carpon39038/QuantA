@@ -1,0 +1,19 @@
+{
+  "id": "core_research_12",
+  "title": "Core Research Universe 12",
+  "description": "A more realistic default A-share research universe spanning main board, ChiNext and STAR names.",
+  "symbols": [
+    "300750.SZ",
+    "002475.SZ",
+    "688017.SH",
+    "600519.SH",
+    "601318.SH",
+    "600036.SH",
+    "000333.SZ",
+    "002594.SZ",
+    "300308.SZ",
+    "601899.SH",
+    "600900.SH",
+    "688111.SH"
+  ]
+}

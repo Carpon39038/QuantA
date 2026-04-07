@@ -57,6 +57,8 @@ def main() -> int:
             {
                 "QUANTA_RUNTIME_DATA_DIR": str(runtime_dir),
                 "QUANTA_DUCKDB_PATH": str(runtime_dir / "duckdb" / "quanta.duckdb"),
+                "QUANTA_SOURCE_VALIDATION_PROVIDERS": "none",
+                "QUANTA_DISCLOSURE_PROVIDER": "none",
             }
         )
 
@@ -116,6 +118,9 @@ def main() -> int:
 
         summary = {
             "ok": True,
+            "source_universe": os.environ.get("QUANTA_SOURCE_UNIVERSE", "core_operating_40"),
+            "source_validation_providers": ["none"],
+            "disclosure_provider": "none",
             "latest_biz_date": latest_biz_date,
             "target_biz_dates": target_biz_dates,
             "first_run_stdout": first_run.stdout.strip().splitlines(),

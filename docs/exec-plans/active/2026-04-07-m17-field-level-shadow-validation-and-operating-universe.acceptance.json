@@ -1,0 +1,43 @@
+{
+  "plan_id": "2026-04-07-m17-field-level-shadow-validation-and-operating-universe",
+  "title": "M17 Field-Level Shadow Validation And Operating Universe",
+  "items": [
+    {
+      "id": "operating-universe-default",
+      "title": "Default operating universe is expanded",
+      "description": "The repo defaults to `core_operating_40` when QUANTA_SOURCE_SYMBOLS is not explicitly configured.",
+      "verification": [
+        "scripts/smoke.sh",
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/app_wiring/settings.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "field-level-shadow-validation",
+      "title": "Shadow validation exposes field-level data quality",
+      "description": "Supplementary validation reports field-level match/mismatch/missing counts and tolerances for price and liquidity fields, rather than only close_raw.",
+      "verification": [
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-operating-universe-provider",
+      "title": "Live provider covers the larger universe",
+      "description": "The canonical Tushare provider returns 40 tracked bars and 40 fundamental overrides for the `core_operating_40` universe.",
+      "verification": [
+        "python3 scripts/tushare_live_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-operating-universe-backfill",
+      "title": "Live backfill remains idempotent on the larger universe",
+      "description": "The isolated live backfill smoke continues to show first-run insert and second-run skip semantics on recent open days under `core_operating_40`.",
+      "verification": [
+        "python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

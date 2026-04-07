@@ -69,6 +69,7 @@ def main() -> int:
         "ok": True,
         "provider": snapshot.provider,
         "source": snapshot.source,
+        "source_universe": settings.source_universe,
         "latest_biz_date": latest_biz_date,
         "snapshot_biz_date": snapshot.biz_date,
         "tracked_symbols": tracked_symbols,

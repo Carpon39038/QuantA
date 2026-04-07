@@ -17,6 +17,9 @@ from backend.app.shared.providers.official_disclosure_source import (
     OfficialDisclosureProvider,
     build_official_disclosure_provider,
 )
+from backend.app.shared.providers.source_validation import (
+    build_shadow_validation_summary,
+)
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -110,6 +113,24 @@ def _sync_market_data_with_provider(
 ) -> dict[str, object]:
     _consume_simulated_source_failure(settings, biz_date=biz_date)
     source_snapshot = provider.fetch_daily_snapshot(biz_date=biz_date)
+    shadow_validation = build_shadow_validation_summary(
+        settings,
+        canonical_snapshot=source_snapshot,
+    )
+    source_watermark = {
+        **source_snapshot.source_watermark,
+        "shadow_validation": shadow_validation,
+    }
+    market_overview = dict(source_snapshot.market_overview)
+    market_highlights = list(market_overview.get("highlights", []))
+    market_highlights.append(
+        "shadow_validation_status: " + str(shadow_validation.get("status", "unknown"))
+    )
+    if shadow_validation.get("status") == "OK":
+        market_highlights.append("shadow_validation_ok")
+    elif shadow_validation.get("status") == "WARN":
+        market_highlights.append("shadow_validation_warn")
+    market_overview["highlights"] = market_highlights
     disclosure_items = disclosure_provider.fetch_disclosures(
         biz_date=source_snapshot.biz_date,
         stock_basic=source_snapshot.stock_basic,
@@ -169,7 +190,7 @@ def _sync_market_data_with_provider(
                 ),
                 json.dumps(
                     {
-                        **source_snapshot.source_watermark,
+                        **source_watermark,
                         "provider": source_snapshot.provider,
                         "source": source_snapshot.source,
                         "fetched_at": source_snapshot.fetched_at,
@@ -269,7 +290,7 @@ def _sync_market_data_with_provider(
         market_regime_count = _materialize_market_overview_snapshot(
             connection,
             snapshot_id=snapshot_id,
-            market_overview=source_snapshot.market_overview,
+            market_overview=market_overview,
         )
         analysis_counts = materialize_analysis_snapshot(
             connection,
@@ -321,6 +342,7 @@ def _sync_market_data_with_provider(
             "official_disclosure_item": official_disclosure_count,
             **analysis_counts,
         },
+        "shadow_validation": shadow_validation,
     }
 
 

@@ -126,11 +126,29 @@ function buildLineChart(items, valueKey, accentClass) {
 }
 
 function renderStatusStrip(snapshotPayload, screenerPayload, backtestPayload, focusSymbol) {
+  const validation = snapshotPayload.shadow_validation ?? {};
+  const validationProviders = validation.providers ?? [];
+  const okProviderCount = validationProviders.filter((item) => item.status === "OK").length;
+  const warnProviderCount = validationProviders.filter((item) => item.status === "WARN").length;
   const cards = [
     {
       label: "发布快照",
       value: snapshotPayload.snapshot_id,
       detail: snapshotPayload.status
+    },
+    {
+      label: "研究池",
+      value: snapshotPayload.runtime?.source_universe ?? "--",
+      detail: `${snapshotPayload.runtime?.source_symbol_count ?? "--"} 只跟踪`
+    },
+    {
+      label: "补充校验",
+      value: validation.status ?? "--",
+      detail: validationProviders.length
+        ? `${okProviderCount} OK / ${warnProviderCount} WARN · ${validationProviders
+            .map((item) => `${item.provider}:${item.status}`)
+            .join(" / ")}`
+        : "未配置"
     },
     {
       label: "选股运行",
@@ -140,12 +158,7 @@ function renderStatusStrip(snapshotPayload, screenerPayload, backtestPayload, fo
     {
       label: "回测窗口",
       value: backtestPayload.window,
-      detail: backtestPayload.strategy_name
-    },
-    {
-      label: "跟踪标的",
-      value: focusSymbol,
-      detail: snapshotPayload.market_overview.trade_date
+      detail: `${backtestPayload.strategy_name} · ${focusSymbol}`
     }
   ];
 
@@ -518,7 +531,7 @@ async function main() {
   try {
     const data = await fetchWorkbenchData();
     loadStatusNode.textContent = "已读取 READY 快照与详情";
-    snapshotRefNode.textContent = `${data.snapshot.snapshot_id} / ${data.snapshot.raw_snapshot_id}`;
+    snapshotRefNode.textContent = `${data.snapshot.snapshot_id} / ${data.snapshot.raw_snapshot_id} / ${data.snapshot.runtime?.source_provider ?? "--"}`;
     renderStatusStrip(data.snapshot, data.screener, data.backtest, data.focusCandidate.symbol);
     renderMarketOverview(data.snapshot);
     renderCandidates(data.screener);

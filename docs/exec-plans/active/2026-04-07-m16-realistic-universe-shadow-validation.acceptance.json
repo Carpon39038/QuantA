@@ -1,0 +1,53 @@
+{
+  "plan_id": "2026-04-07-m16-realistic-universe-shadow-validation",
+  "title": "M16 Realistic Universe And Shadow Validation",
+  "items": [
+    {
+      "id": "source-universe-manifest",
+      "title": "Default source universe is versioned",
+      "description": "The repo defines a default `core_research_12` universe manifest and load_settings falls back to it when QUANTA_SOURCE_SYMBOLS is not provided.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/app_wiring/settings.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "shadow-validation-runtime",
+      "title": "Snapshot payload exposes supplementary validation",
+      "description": "market_data.sync writes shadow_validation into source_watermark_json and latest snapshot / system health expose the validation state.",
+      "verification": [
+        "scripts/app_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "tushare-latest-biz-date-fallback",
+      "title": "Tushare provider falls back to a date with real daily bars",
+      "description": "When the current open day has no published daily bars yet, latest_available_biz_date resolves to the most recent trade date that actually returns tracked daily rows.",
+      "verification": [
+        "python3 scripts/tushare_live_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-shadow-validation",
+      "title": "Live sync validates against AkShare and BaoStock",
+      "description": "In the core_research_12 universe, live isolated sync records shadow validation results and both supplementary providers match the canonical Tushare close data within tolerance.",
+      "verification": [
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-backfill-bounded",
+      "title": "Live backfill remains bounded and idempotent",
+      "description": "The isolated live backfill smoke verifies first-run insert and second-run skip semantics on recent open days without turning into an unbounded multi-source regression.",
+      "verification": [
+        "python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

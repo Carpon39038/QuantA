@@ -36,6 +36,8 @@ class QuantAContainer:
             "status": snapshot["status"],
             "generated_at": snapshot["generated_at"],
             "price_basis": snapshot["price_basis"],
+            "source_watermark": snapshot["source_watermark"],
+            "shadow_validation": snapshot["shadow_validation"],
             "market_overview": build_market_overview(snapshot),
             "screener": build_screener_summary(snapshot),
             "backtest": build_backtest_summary(snapshot),
@@ -48,6 +50,11 @@ class QuantAContainer:
                 "seed_fixture_path": str(self.settings.fixture_path),
                 "alerts_path": str(self.settings.alerts_path),
                 "source_provider": self.settings.source_provider,
+                "source_universe": self.settings.source_universe,
+                "source_symbol_count": len(self.settings.source_symbols),
+                "source_validation_providers": list(
+                    self.settings.source_validation_providers
+                ),
             },
         }
 

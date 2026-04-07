@@ -311,7 +311,10 @@ def main() -> int:
         assert backend_payload["market_overview"]["trade_date"] == "2026-03-27"
         assert backend_payload["runtime"]["duckdb_path"].endswith("quanta.duckdb")
         assert backend_payload["runtime"]["source_provider"] == "fixture_json"
+        assert backend_payload["runtime"]["source_universe"] == "core_operating_40"
+        assert backend_payload["runtime"]["source_symbol_count"] == 40
         assert backend_payload["task_status"]["data_update"] == "SUCCESS"
+        assert backend_payload["shadow_validation"]["status"] in {"SKIPPED", "UNKNOWN"}
         assert backend_payload["screener"]["strategy_name"] == "三策略候选池"
         assert len(backend_payload["screener"]["top_candidates"]) >= 3
         assert backend_payload["screener"]["top_candidates"][0]["strategy_name"] in {
@@ -395,6 +398,10 @@ def main() -> int:
         assert system_health_payload["task_count"] == len(task_runs_payload["items"])
         assert system_health_payload["table_counts"]["backtest_trade"] >= 4
         assert system_health_payload["alert_count"] == 0
+        assert system_health_payload["shadow_validation"]["status"] in {
+            "SKIPPED",
+            "UNKNOWN",
+        }
         assert alerts_payload["items"] == []
         assert daily_sync_post_payload["status"] == "accepted"
         assert daily_sync_post_payload["task"]["task_name"] == "daily_sync"
@@ -435,6 +442,7 @@ def main() -> int:
         )
         assert refreshed_snapshot_payload["snapshot_id"] == pipeline_snapshot_id
         assert refreshed_snapshot_payload["market_overview"]["trade_date"] == "2026-03-31"
+        assert refreshed_snapshot_payload["shadow_validation"]["status"] == "SKIPPED"
         assert refreshed_screener_payload["snapshot_id"] == pipeline_snapshot_id
         assert refreshed_screener_payload["run_id"] != screener_latest_payload["run_id"]
         assert refreshed_service_backtest_payload["snapshot_id"] == pipeline_snapshot_id

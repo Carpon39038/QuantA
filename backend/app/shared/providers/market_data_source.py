@@ -306,7 +306,27 @@ class TushareMarketDataProvider:
             raise RuntimeError(
                 "Tushare provider returned no open trade dates in the recent probe window"
             )
-        return open_dates[-1]
+        tracked_tushare_codes = {
+            _symbol_to_tushare_code(symbol)
+            for symbol in self._settings.source_symbols
+        }
+        for probe_biz_date in reversed(open_dates):
+            daily_rows = _index_records_by_key(
+                _frame_records(
+                    _call_tushare_dataset(
+                        self._pro,
+                        dataset_name="daily",
+                        trade_date=probe_biz_date.replace("-", ""),
+                    )
+                ),
+                key="ts_code",
+            )
+            if any(ts_code in daily_rows for ts_code in tracked_tushare_codes):
+                return probe_biz_date
+
+        raise RuntimeError(
+            "Tushare provider found recent open trade dates, but no daily bars for the configured universe"
+        )
 
     def list_open_biz_dates(
         self,

@@ -148,6 +148,7 @@ def _fetch_raw_snapshot_meta(
           snapshot_seq,
           biz_date,
           status,
+          source_watermark_json,
           created_at
         FROM raw_snapshot
         WHERE raw_snapshot_id = ?
@@ -163,6 +164,7 @@ def _fetch_raw_snapshot_meta(
         snapshot_seq,
         biz_date,
         status,
+        source_watermark_json,
         created_at,
     ) = row
     return {
@@ -170,6 +172,7 @@ def _fetch_raw_snapshot_meta(
         "snapshot_seq": int(snapshot_seq),
         "biz_date": _isoformat(biz_date),
         "status": str(status),
+        "source_watermark": _decode_json_text(source_watermark_json, {}),
         "created_at": _isoformat(created_at),
     }
 
@@ -1026,6 +1029,10 @@ def load_latest_published_snapshot(settings: AppSettings) -> dict[str, object]:
     connection = _open_connection(settings)
     try:
         latest_snapshot = _fetch_published_snapshot_meta(connection)
+        raw_snapshot = _fetch_raw_snapshot_meta(
+            connection,
+            str(latest_snapshot["raw_snapshot_id"]),
+        )
 
         market_row = connection.execute(
             """
@@ -1178,6 +1185,14 @@ def load_latest_published_snapshot(settings: AppSettings) -> dict[str, object]:
             "status": latest_snapshot["status"],
             "generated_at": latest_snapshot["published_at"],
             "price_basis": latest_snapshot["price_basis"],
+            "source_watermark": raw_snapshot["source_watermark"],
+            "shadow_validation": raw_snapshot["source_watermark"].get(
+                "shadow_validation",
+                {
+                    "status": "UNKNOWN",
+                    "providers": [],
+                },
+            ),
             "market_overview": {
                 "trade_date": _isoformat(trade_date),
                 "summary": str(market_summary),
@@ -2252,6 +2267,10 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
     connection = _open_connection(settings)
     try:
         latest_snapshot = _fetch_published_snapshot_meta(connection)
+        raw_snapshot = _fetch_raw_snapshot_meta(
+            connection,
+            str(latest_snapshot["raw_snapshot_id"]),
+        )
         table_counts = {
             table_name: int(
                 connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
@@ -2295,6 +2314,13 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
             "table_counts": table_counts,
             "task_count": task_count,
             "alert_count": len(load_recent_alerts(settings, limit=200)),
+            "shadow_validation": raw_snapshot["source_watermark"].get(
+                "shadow_validation",
+                {
+                    "status": "UNKNOWN",
+                    "providers": [],
+                },
+            ),
         }
     finally:
         connection.close()

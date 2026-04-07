@@ -31,12 +31,14 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 6. `market_data.sync --start-biz-date/--end-biz-date` 已支持最小历史回补，并默认跳过已存在的 `biz_date`，避免重复生成同日 source-backed 快照。
 7. scheduler 在 source provider 明显领先于最新 READY snapshot 时，会优先 enqueue `history_backfill`，并由 service worker 把回补出的历史 snapshot 继续推进到 `READY`，避免遗留多条悬空 `BUILDING` 快照。
 8. 官方披露现已作为独立 sidecar 接入 `official_disclosure_item`；`fixture_json` 开发链走本地 fixture，live 环境默认走 CNInfo 官方检索页与 stock lookup JSON，不再把披露信息混入 canonical 日线 provider 本体。
+9. `tushare` canonical sync 现在会在白天自动回退到最近一个真正有日线的交易日，而不是只依据 `trade_cal` 判断“今天开市”后直接失败。
+10. `shadow_validation` 已接入 `akshare` 与 `baostock` 两条补充源，会把 `open/high/low/close/pre_close/volume/amount` 的逐股对比结果写入 `source_watermark_json`，并经 `/api/v1/snapshot/latest` 与 `/api/v1/system/health` 暴露。
 
 ## Known Risks
 
-1. 真实外部数据源字段漂移和限流仍可能让 `akshare` provider 失效。
+1. 真实外部数据源字段漂移和限流仍可能让 `akshare` 或 `baostock` 的补充校验失效；当前实测 `akshare` 在更大研究池上仍会受 Eastmoney 上游链路波动影响。
 2. 单机 DuckDB 读写争用仍需要靠“单写者优先”和顺序 smoke 避免。
-3. 当前 source-backed sync 虽已支持最小历史回补、CNInfo 公告元数据 sidecar 与调度面接线，但还没有覆盖全市场、复权修复、企业行为修正和自动化长期补数策略。
+3. 当前 source-backed sync 虽已支持更大默认研究池、最小历史回补、CNInfo 公告元数据 sidecar、多字段 shadow validation 与调度面接线，但还没有覆盖全市场、复权修复、企业行为修正和自动化长期补数策略。
 4. 官方披露目前还是 metadata-first，尚未纳入公告正文、交易所问询、回复函和跨源去重策略。
 5. 回测成交假设仍偏理想化，尚未引入更真实的滑点和撮合约束。
 

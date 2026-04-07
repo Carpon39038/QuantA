@@ -250,6 +250,11 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         "seed_fixture_path": str(container.settings.fixture_path),
                         "alerts_path": str(container.settings.alerts_path),
                         "source_provider": container.settings.source_provider,
+                        "source_universe": container.settings.source_universe,
+                        "source_symbol_count": len(container.settings.source_symbols),
+                        "source_validation_providers": list(
+                            container.settings.source_validation_providers
+                        ),
                     },
                 )
                 return

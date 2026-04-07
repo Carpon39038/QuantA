@@ -21,11 +21,11 @@
 | 数据模型设计 | 3 | 快照语义明确，且已落最小 v1.0 DuckDB DDL、生成态 schema 快照、as-of、选股/回测表结构，以及 `fundamental_feature_daily` 财务 sidecar |
 | 仓库级 harness | 2 | 已建立入口、计划与约束，但缺 CI 和自动清理 |
 | 执行 harness | 3 | 已有 acceptance、progress、init、smoke、pipeline smoke，且能稳定跑 source-backed sync、retry/backoff 和 backend/frontend app smoke |
-| 后端代码骨架 | 3 | 已有最小 dev server、DuckDB/bootstrap、source-backed sync、Tushare canonical provider、只读查询路径、stock as-of API、screener/backtest detail API 与 runtime bootstrap |
-| 前端代码骨架 | 3 | workbench 已读取 latest snapshot、stock detail、screener 和 backtest detail API，但还未拆成独立页面路由 |
+| 后端代码骨架 | 3 | 已有最小 dev server、DuckDB/bootstrap、source-backed sync、Tushare canonical provider、只读查询路径、stock as-of API、screener/backtest detail API、更大 source universe manifest 与多字段 shadow validation 暴露 |
+| 前端代码骨架 | 3 | workbench 已读取 latest snapshot、stock detail、screener 和 backtest detail API，并开始展示研究池与补充校验状态摘要，但还未拆成独立页面路由 |
 | 任务编排 | 4 | 已有 queue-backed GET/POST tasking/service 面、阶段化 `daily_sync -> daily_screener -> daily_backtest`、retry/backoff、resident scheduler、worker 消费与 pipeline smoke 覆盖 |
 | 可观测性 | 3 | 已有 health、runtime、task runs、task status、alert_count、`/api/v1/system/alerts` 与本地 alerts JSONL，但还没有远端通知与结构化 tracing |
-| 测试与结构校验 | 3 | 已有 repo/execution harness 校验、pipeline smoke、Tushare provider smoke 与 backend/frontend smoke，覆盖 latest snapshot、stock detail、screener、backtest、retry 路径与前端详情壳子 |
+| 测试与结构校验 | 3 | 已有 repo/execution harness 校验、pipeline smoke、Tushare provider/live smoke 与 backend/frontend smoke，覆盖 latest snapshot、stock detail、screener、backtest、retry 路径、更大研究池配置与前端详情壳子 |
 
 ## Upgrade Rule
 

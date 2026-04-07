@@ -76,12 +76,21 @@ def main() -> int:
 
         summary = {
             "ok": True,
+            "source_universe": env.get("QUANTA_SOURCE_UNIVERSE", "core_operating_40"),
+            "source_validation_providers": env.get(
+                "QUANTA_SOURCE_VALIDATION_PROVIDERS",
+                "akshare,baostock",
+            ).split(","),
+            "disclosure_provider": env.get("QUANTA_DISCLOSURE_PROVIDER", "auto"),
             "sync_stdout": completed.stdout.strip().splitlines(),
             "raw_snapshot_id": raw_snapshot_id,
             "snapshot_id": snapshot_id,
             "source_watermark": json.loads(source_watermark_json),
             "artifact_status": json.loads(artifact_status_json),
             "fundamental_feature_count": fundamental_feature_count,
+            "shadow_validation": json.loads(source_watermark_json).get(
+                "shadow_validation"
+            ),
         }
         print(json.dumps(summary, ensure_ascii=False, indent=2))
 

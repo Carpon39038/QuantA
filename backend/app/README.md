@@ -35,7 +35,7 @@
 当前行为已升级为 `source-backed DuckDB dev foundation`：
 
 1. 本地 runtime 会在 `data/duckdb/quanta.duckdb` 初始化最小 schema。
-2. 当前默认使用 `fixture_json` source provider，从 `backend/app/fixtures/source_snapshots/` 读取“可复现的外部数据源快照”；同时已接入 `tushare`、`akshare` 作为正式支持的 source provider / adapter。
+2. 当前默认使用 `fixture_json` source provider，从 `backend/app/fixtures/source_snapshots/` 读取“可复现的外部数据源快照”；同时已接入 `tushare`、`akshare` 作为正式支持的 source provider / adapter，并把默认研究池切到 `backend/app/fixtures/source_universes/core_operating_40.json`。
 3. startup 会按 `market_data -> analysis -> screener -> backtest` 顺序完成最小 dev bootstrap；repo 查询使用 DuckDB 只读连接，避免写时副作用。
 4. 已提供 stock detail 入口：`/api/v1/stocks/{symbol}/snapshot`、`/api/v1/stocks/{symbol}/kline`、`/api/v1/stocks/{symbol}/indicators`、`/api/v1/stocks/{symbol}/capital-flow`、`/api/v1/stocks/{symbol}/fundamentals`、`/api/v1/stocks/{symbol}/disclosures`。
 5. 已提供 screener/backtest detail 入口：`/api/v1/screener/runs/latest`、`/api/v1/screener/runs/{run_id}`、`/api/v1/backtests/runs/latest`、`/api/v1/backtests/runs/{backtest_id}`。
@@ -50,12 +50,16 @@
 14. `tushare` provider 当前已覆盖 `stock_basic`、`trade_calendar`、`daily`、`daily_basic`、`stk_limit`，并会把 `moneyflow`、`top_list`、`moneyflow_hsgt` 归一成 `capital_feature_daily` 可消费的 sidecar overrides、source watermark 与 market overview highlights。
 15. `tushare` provider 现已把 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip` 归一成 `fundamental_feature_daily`，让 screener 可以直接读取 canonical 财务分，而不再只用启发式 `fundamental_score`。
 16. workbench 已开始展示财务侧 panel；默认 `fixture_json` 链会返回空但合法的 fundamentals payload，而 `tushare` canonical provider 可填充真实财务 sidecar。
-17. `scripts/tushare_live_smoke.py` 与 `scripts/tushare_live_sync_smoke.py` 已可用于真 token 校验 provider 与隔离 live sync；当前实测 live canonical 数据与隔离 DuckDB 写入都已通过。
+17. `scripts/tushare_live_smoke.py` 与 `scripts/tushare_live_sync_smoke.py` 已可用于真 token 校验 provider 与隔离 live sync；当前实测 live canonical 数据、双源 shadow validation 与隔离 DuckDB 写入都已通过。
 18. `tushare` provider 现在会按股票回退到最近可用财报期，而不是强制所有股票共用一个最新报告期；这让 live 路径下的 `fundamental_feature_daily` 可以在财报披露错位时仍保持较高覆盖率。
-19. 当前实测 `300750.SZ` 使用 `2025-12-31`，`002475.SZ` / `688017.SH` 使用 `2025-09-30`，live smoke 与 live sync 都已达到 `3/3` 财务覆盖。
-20. `python3 -m backend.app.domains.market_data.sync --start-biz-date YYYY-MM-DD --end-biz-date YYYY-MM-DD --print-summary` 现在已支持最小历史回补；provider 会先列出开市日，再按日期逐日同步，并默认跳过已存在的 `biz_date`，避免重复堆叠同日快照。
-21. `scripts/market_data_backfill_smoke.py` 会在 fake Tushare 环境里验证“首跑回补 + 二次跳过已存在日期”；`scripts/tushare_live_backfill_smoke.py` 则会在真 token 下用隔离 DuckDB 验证最近 5 个交易日的 live backfill。
-22. `history_backfill` 现在也已接入 API / durable queue / worker / scheduler；scheduler 在发现最新 READY snapshot 落后于 source provider 时，会优先 enqueue `history_backfill`，而不是只同步单天。
-23. `history_backfill` service task 会把区间内每个新同步 snapshot 继续推进 through `daily_screener -> daily_backtest -> READY`，避免在正式运行时留下悬空 `BUILDING` 历史快照。
-24. 官方披露 sidecar 现已按 `CNInfo official search + stock lookup JSON` 接入 `official_disclosure_item`，并通过 stock disclosures API 与 workbench 暴露最小公告元数据；默认 `fixture_json` 开发链会从 `backend/app/fixtures/source_disclosures/` 读取本地披露 fixture，live `tushare`/`akshare` 则默认走 `cninfo`。
-25. 当前官方披露接入仍是“公告元数据优先”，主要覆盖标题、公告时间、详情链接和 PDF 链接；公告正文抽取、交易所问询和更丰富的披露分类仍在后续范围内。
+19. `tushare` provider 还会在白天自动从 `trade_cal` 最近开市日回退到“最近一个真正已有日线的 biz_date”，避免把当天尚未发布的日线误判成 provider 失败。
+20. 当前默认研究池已扩到 `core_operating_40`；2026-04-07 实测 `tushare_live_smoke.py` 在该研究池下返回 `latest_biz_date=2026-04-03`、`daily_bar_count=40`、`fundamental_feature_override_count=40`，并达到 `40/40` 财务覆盖。
+21. `market_data.sync` 现在会把 `shadow_validation` 写进 `raw_snapshot.source_watermark_json`，并通过 `/api/v1/snapshot/latest`、`/api/v1/system/health` 与 runtime payload 暴露研究池、symbol count 和补充校验状态。
+22. 当前补充校验支持 `akshare` 与 `baostock`，已从只比 `close_raw` 扩到 `open/high/low/close/pre_close/volume/amount` 七个字段；默认容差为价格 `5 bps`、`volume/amount` 各 `20 bps`。
+23. 2026-04-07 在 `core_operating_40` 上实测，`baostock` 对 canonical `tushare` 达到 `40/40` 全字段 match；`akshare` 仍会受其上游 Eastmoney 链路稳定性影响，当前在该研究池 live sync 中表现为 `UNAVAILABLE`，但不会阻断 canonical sync 本身。
+24. `python3 -m backend.app.domains.market_data.sync --start-biz-date YYYY-MM-DD --end-biz-date YYYY-MM-DD --print-summary` 现在已支持最小历史回补；provider 会先列出开市日，再按日期逐日同步，并默认跳过已存在的 `biz_date`，避免重复堆叠同日快照。
+25. `scripts/market_data_backfill_smoke.py` 会在 fake Tushare 环境里验证“首跑回补 + 二次跳过已存在日期”；`scripts/tushare_live_backfill_smoke.py` 则会在真 token 下用隔离 DuckDB 验证最近 5 个交易日的 live backfill，并为了保持时长可控而关闭 shadow validation / disclosure sidecar。
+26. `history_backfill` 现在也已接入 API / durable queue / worker / scheduler；scheduler 在发现最新 READY snapshot 落后于 source provider 时，会优先 enqueue `history_backfill`，而不是只同步单天。
+27. `history_backfill` service task 会把区间内每个新同步 snapshot 继续推进 through `daily_screener -> daily_backtest -> READY`，避免在正式运行时留下悬空 `BUILDING` 历史快照。
+28. 官方披露 sidecar 现已按 `CNInfo official search + stock lookup JSON` 接入 `official_disclosure_item`，并通过 stock disclosures API 与 workbench 暴露最小公告元数据；默认 `fixture_json` 开发链会从 `backend/app/fixtures/source_disclosures/` 读取本地披露 fixture，live `tushare`/`akshare` 则默认走 `cninfo`。
+29. 当前官方披露接入仍是“公告元数据优先”，主要覆盖标题、公告时间、详情链接和 PDF 链接；公告正文抽取、交易所问询和更丰富的披露分类仍在后续范围内。
