@@ -74,6 +74,15 @@ def main() -> int:
         finally:
             connection.close()
 
+        alerts_path = runtime_dir / "logs" / "alerts.jsonl"
+        alerts = []
+        if alerts_path.exists():
+            alerts = [
+                json.loads(line)
+                for line in alerts_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+
         summary = {
             "ok": True,
             "source_universe": env.get("QUANTA_SOURCE_UNIVERSE", "core_operating_40"),
@@ -91,6 +100,8 @@ def main() -> int:
             "shadow_validation": json.loads(source_watermark_json).get(
                 "shadow_validation"
             ),
+            "alert_count": len(alerts),
+            "alerts": alerts[-10:],
         }
         print(json.dumps(summary, ensure_ascii=False, indent=2))
 

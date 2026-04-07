@@ -1,0 +1,45 @@
+{
+  "plan_id": "2026-04-07-m18-deeper-canonical-quality-and-provider-degradation",
+  "title": "M18 Deeper Canonical Quality And Provider Degradation",
+  "items": [
+    {
+      "id": "canonical-quality-checks",
+      "title": "Canonical source exposes deeper quality checks",
+      "description": "The Tushare-backed canonical snapshot now reports adj_factor coverage, limit-price validation, and suspension consistency checks through shadow_validation canonical checks.",
+      "verification": [
+        "python3 scripts/tushare_live_smoke.py",
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "adj-factor-carry-forward",
+      "title": "Price series preserve adj_factor across rebuilds",
+      "description": "price_series_daily now carries forward the latest known adj_factor when the current source snapshot lacks an override, instead of resetting historical rows to 1.0.",
+      "verification": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "provider-degradation-alerts",
+      "title": "Provider degradation is explicit and alert-backed",
+      "description": "Live sync reports akshare upstream connectivity degradation and baostock adj_factor semantic mismatch, and isolated runtime alerts capture the degraded provider signals.",
+      "verification": [
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "repo-gates-green",
+      "title": "Repo gates remain green after deeper validation",
+      "description": "Default smoke and harness document checks still pass after extending canonical checks and runtime-local alerts.",
+      "verification": [
+        "scripts/smoke.sh",
+        "python3 scripts/check_harness_docs.py",
+        "python3 scripts/check_execution_harness.py --require-all-passing"
+      ],
+      "passes": true
+    }
+  ]
+}

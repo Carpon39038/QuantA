@@ -20,6 +20,7 @@ from backend.app.shared.providers.official_disclosure_source import (
 from backend.app.shared.providers.source_validation import (
     build_shadow_validation_summary,
 )
+from backend.app.shared.telemetry.alerts import emit_alert
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -126,10 +127,18 @@ def _sync_market_data_with_provider(
     market_highlights.append(
         "shadow_validation_status: " + str(shadow_validation.get("status", "unknown"))
     )
+    market_highlights.append(
+        "shadow_validation_degradation_status: "
+        + str(shadow_validation.get("degradation_status", "unknown"))
+    )
     if shadow_validation.get("status") == "OK":
         market_highlights.append("shadow_validation_ok")
     elif shadow_validation.get("status") == "WARN":
         market_highlights.append("shadow_validation_warn")
+    if shadow_validation.get("degradation_status") == "DEGRADED":
+        market_highlights.append("shadow_validation_degraded")
+    if shadow_validation.get("canonical_check_status") == "WARN":
+        market_highlights.append("canonical_quality_warn")
     market_overview["highlights"] = market_highlights
     disclosure_items = disclosure_provider.fetch_disclosures(
         biz_date=source_snapshot.biz_date,
@@ -286,6 +295,7 @@ def _sync_market_data_with_provider(
             raw_snapshot_id=raw_snapshot_id,
             price_basis=source_snapshot.price_basis,
             updated_at=published_at,
+            adj_factor_overrides=source_snapshot.adj_factor_overrides,
         )
         market_regime_count = _materialize_market_overview_snapshot(
             connection,
@@ -321,6 +331,13 @@ def _sync_market_data_with_provider(
                 "task_run_log": "PENDING",
             },
             published_at=published_at,
+        )
+        _emit_shadow_validation_alerts(
+            settings,
+            shadow_validation=shadow_validation,
+            snapshot_id=snapshot_id,
+            raw_snapshot_id=raw_snapshot_id,
+            biz_date=source_snapshot.biz_date,
         )
     finally:
         connection.close()
@@ -656,6 +673,7 @@ def _materialize_price_series_snapshot(
     raw_snapshot_id: str,
     price_basis: str,
     updated_at: str,
+    adj_factor_overrides: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
 ) -> int:
     rows = connection.execute(
         """
@@ -703,8 +721,21 @@ def _materialize_price_series_snapshot(
     ).fetchall()
 
     connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
+    previous_adj_factors = _load_previous_adj_factor_map(
+        connection,
+        price_basis=price_basis,
+    )
+    current_adj_factors = {
+        (str(item["symbol"]), str(item["trade_date"])): float(item["adj_factor"])
+        for item in (adj_factor_overrides or [])
+        if item.get("adj_factor") is not None
+    }
     inserted = 0
     for symbol, trade_date, open_raw, high_raw, low_raw, close_raw, pre_close_raw, volume, amount in rows:
+        resolved_adj_factor = current_adj_factors.get(
+            (str(symbol), str(trade_date)),
+            previous_adj_factors.get((str(symbol), str(trade_date)), 1.0),
+        )
         connection.execute(
             """
             INSERT INTO price_series_daily (
@@ -732,7 +763,7 @@ def _materialize_price_series_snapshot(
                 low_raw,
                 close_raw,
                 pre_close_raw,
-                1.0,
+                resolved_adj_factor,
                 snapshot_id,
                 volume,
                 amount,
@@ -741,6 +772,96 @@ def _materialize_price_series_snapshot(
         )
         inserted += 1
     return inserted
+
+
+def _emit_shadow_validation_alerts(
+    settings: AppSettings,
+    *,
+    shadow_validation: dict[str, object],
+    snapshot_id: str,
+    raw_snapshot_id: str,
+    biz_date: str,
+) -> None:
+    for provider_item in shadow_validation.get("degraded_providers", []):
+        if not isinstance(provider_item, dict):
+            continue
+        provider = str(provider_item.get("provider", "unknown"))
+        status = str(provider_item.get("status", "unknown"))
+        message = str(provider_item.get("message", ""))
+        emit_alert(
+            settings,
+            alert_type="shadow_validation_provider_degraded",
+            severity="warning",
+            message=f"Shadow validation provider {provider} is {status}",
+            detail={
+                "provider": provider,
+                "status": status,
+                "degradation_category": provider_item.get("degradation_category"),
+                "message": message,
+                "snapshot_id": snapshot_id,
+                "raw_snapshot_id": raw_snapshot_id,
+                "biz_date": biz_date,
+                "source_universe": settings.source_universe,
+            },
+        )
+
+    canonical_checks = shadow_validation.get("canonical_checks", {})
+    if not isinstance(canonical_checks, dict):
+        return
+    for check_name, check in canonical_checks.items():
+        if not isinstance(check, dict) or str(check.get("status")) != "WARN":
+            continue
+        emit_alert(
+            settings,
+            alert_type="canonical_data_quality_warning",
+            severity="warning",
+            message=f"Canonical data quality warning in {check_name}",
+            detail={
+                "check_name": check_name,
+                "check": check,
+                "snapshot_id": snapshot_id,
+                "raw_snapshot_id": raw_snapshot_id,
+                "biz_date": biz_date,
+                "source_universe": settings.source_universe,
+            },
+        )
+
+
+def _load_previous_adj_factor_map(
+    connection,
+    *,
+    price_basis: str,
+) -> dict[tuple[str, str], float]:
+    rows = connection.execute(
+        """
+        WITH ranked AS (
+          SELECT
+            ps.symbol,
+            ps.trade_date,
+            ps.adj_factor,
+            ROW_NUMBER() OVER (
+              PARTITION BY ps.symbol, ps.trade_date, ps.price_basis
+              ORDER BY ap.publish_seq DESC
+            ) AS row_num
+          FROM price_series_daily ps
+          JOIN artifact_publish ap
+            ON ap.snapshot_id = ps.snapshot_id
+          WHERE ps.price_basis = ?
+        )
+        SELECT
+          symbol,
+          trade_date,
+          adj_factor
+        FROM ranked
+        WHERE row_num = 1
+        """,
+        [price_basis],
+    ).fetchall()
+    return {
+        (str(symbol), str(trade_date)): float(adj_factor)
+        for symbol, trade_date, adj_factor in rows
+        if adj_factor is not None
+    }
 
 
 def _materialize_market_overview_snapshot(

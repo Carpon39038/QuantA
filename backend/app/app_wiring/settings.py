@@ -47,6 +47,13 @@ def _resolve_runtime_path(root_dir: Path, raw_path: str) -> Path:
     return root_dir / path
 
 
+def _resolve_data_path(data_dir: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return data_dir / path
+
+
 @dataclass(frozen=True)
 class AppSettings:
     root_dir: Path
@@ -113,9 +120,9 @@ def load_settings() -> AppSettings:
         duckdb_path=duckdb_path,
         logs_dir=data_dir / "logs",
         queue_dir=data_dir / "queue",
-        alerts_path=_resolve_runtime_path(
-            root_dir,
-            os.environ.get("QUANTA_ALERTS_PATH", "data/logs/alerts.jsonl"),
+        alerts_path=_resolve_data_path(
+            data_dir,
+            os.environ.get("QUANTA_ALERTS_PATH", "logs/alerts.jsonl"),
         ),
         fixture_path=root_dir / "backend/app/fixtures/published_snapshot.json",
         source_fixture_dir=_resolve_runtime_path(

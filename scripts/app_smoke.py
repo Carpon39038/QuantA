@@ -21,6 +21,7 @@ from backend.app.domains.market_data.sync import delete_snapshot_artifacts
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.queue import delete_service_task_artifacts
 from backend.app.shared.providers.duckdb import connect_duckdb
+from backend.app.shared.telemetry.alerts import load_recent_alerts
 
 
 def find_free_port() -> int:
@@ -149,6 +150,7 @@ def fetch_task_log(settings, *, task_id: str) -> dict[str, object]:
 def main() -> int:
     settings = load_settings()
     ensure_runtime_directories(settings)
+    baseline_alert_count = len(load_recent_alerts(settings, limit=200))
 
     backend_port = find_free_port()
     frontend_port = find_free_port()
@@ -397,12 +399,12 @@ def main() -> int:
         assert system_health_payload["snapshot_id"] == backend_payload["snapshot_id"]
         assert system_health_payload["task_count"] == len(task_runs_payload["items"])
         assert system_health_payload["table_counts"]["backtest_trade"] >= 4
-        assert system_health_payload["alert_count"] == 0
+        assert system_health_payload["alert_count"] == baseline_alert_count
         assert system_health_payload["shadow_validation"]["status"] in {
             "SKIPPED",
             "UNKNOWN",
         }
-        assert alerts_payload["items"] == []
+        assert len(alerts_payload["items"]) == min(baseline_alert_count, 20)
         assert daily_sync_post_payload["status"] == "accepted"
         assert daily_sync_post_payload["task"]["task_name"] == "daily_sync"
         assert daily_sync_post_payload["task"]["status"] == "PENDING"

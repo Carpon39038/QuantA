@@ -48,6 +48,7 @@ class MarketDataSnapshot:
     source_watermark: dict[str, object]
     capital_feature_overrides: tuple[dict[str, object], ...] = ()
     fundamental_feature_overrides: tuple[dict[str, object], ...] = ()
+    adj_factor_overrides: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -402,9 +403,19 @@ class TushareMarketDataProvider:
             dataset_name="moneyflow",
             trade_date=trade_date,
         )
+        adj_factor_rows, adj_factor_warning = _load_tushare_optional_records(
+            self._pro,
+            dataset_name="adj_factor",
+            trade_date=trade_date,
+        )
         top_list_rows, top_list_warning = _load_tushare_optional_records(
             self._pro,
             dataset_name="top_list",
+            trade_date=trade_date,
+        )
+        suspend_rows, suspend_warning = _load_tushare_optional_records(
+            self._pro,
+            dataset_name="suspend_d",
             trade_date=trade_date,
         )
         moneyflow_hsgt_rows, moneyflow_hsgt_warning = _load_tushare_optional_records(
@@ -412,6 +423,21 @@ class TushareMarketDataProvider:
             dataset_name="moneyflow_hsgt",
             trade_date=trade_date,
         )
+        adj_factor_by_symbol = {
+            _normalize_tushare_symbol(str(row["ts_code"])): _float_or_none(
+                row.get("adj_factor")
+            )
+            for row in adj_factor_rows
+            if row.get("ts_code") not in (None, "")
+            and _normalize_tushare_symbol(str(row["ts_code"])) in tracked_symbols
+        }
+        suspended_symbols = {
+            _normalize_tushare_symbol(str(row["ts_code"]))
+            for row in suspend_rows
+            if row.get("ts_code") not in (None, "")
+            and str(row.get("suspend_type") or "").upper() == "S"
+            and _normalize_tushare_symbol(str(row["ts_code"])) in tracked_symbols
+        }
         financial_period_candidates = _candidate_tushare_financial_periods(target_biz_date)
         financial_bundle = _resolve_tushare_financial_bundle(
             self._pro,
@@ -438,6 +464,7 @@ class TushareMarketDataProvider:
                 continue
             daily_basic_row = daily_basic_rows.get(ts_code, {})
             stk_limit_row = stk_limit_rows.get(ts_code, {})
+            limit_rule_code = _limit_rule_code_for_board(str(item["board"]))
             daily_bars.append(
                 {
                     "symbol": str(item["symbol"]),
@@ -452,8 +479,9 @@ class TushareMarketDataProvider:
                     "turnover_rate": _float_or_none(daily_basic_row.get("turnover_rate")),
                     "high_limit": _float_or_none(stk_limit_row.get("up_limit")),
                     "low_limit": _float_or_none(stk_limit_row.get("down_limit")),
-                    "limit_rule_code": "TUSHARE_STK_LIMIT",
-                    "is_suspended": False,
+                    "limit_rule_code": limit_rule_code,
+                    "is_suspended": str(item["symbol"]) in suspended_symbols,
+                    "adj_factor": adj_factor_by_symbol.get(str(item["symbol"])),
                 }
             )
 
@@ -483,12 +511,18 @@ class TushareMarketDataProvider:
                 moneyflow_warning,
                 top_list_warning,
                 moneyflow_hsgt_warning,
+                adj_factor_warning,
+                suspend_warning,
                 *financial_bundle.warnings,
             )
             if warning is not None
         ]
         if north_money_million is not None:
             highlights.append(f"north_money_million: {north_money_million:.2f}")
+        highlights.append(
+            f"adj_factor_coverage: {len(adj_factor_by_symbol)}/{len(stock_basic_records)}"
+        )
+        highlights.append(f"suspended_symbol_count: {len(suspended_symbols)}")
         if financial_periods:
             if len(financial_periods) == 1:
                 highlights.append(f"financial_report_period: {financial_periods[0]}")
@@ -504,6 +538,15 @@ class TushareMarketDataProvider:
             daily_bars=daily_bars,
             moneyflow_rows=moneyflow_rows,
             top_list_rows=top_list_rows,
+        )
+        adj_factor_overrides = tuple(
+            {
+                "symbol": symbol,
+                "trade_date": target_biz_date,
+                "adj_factor": adj_factor,
+            }
+            for symbol, adj_factor in sorted(adj_factor_by_symbol.items())
+            if adj_factor is not None
         )
         fundamental_feature_overrides = _build_tushare_fundamental_feature_overrides(
             daily_bars=daily_bars,
@@ -545,8 +588,14 @@ class TushareMarketDataProvider:
                 "daily_bar_count": len(daily_bars),
                 "exchange": self._settings.tushare_exchange,
                 "moneyflow_count": len(moneyflow_rows),
+                "adj_factor_count": len(adj_factor_overrides),
+                "adj_factor_missing_symbols": sorted(
+                    tracked_symbols.difference(set(adj_factor_by_symbol))
+                ),
                 "top_list_count": len(top_list_rows),
                 "north_money_million": north_money_million,
+                "suspended_symbol_count": len(suspended_symbols),
+                "suspended_symbols": sorted(suspended_symbols),
                 "financial_report_period": (
                     financial_periods[0] if financial_periods else None
                 ),
@@ -562,6 +611,7 @@ class TushareMarketDataProvider:
             },
             capital_feature_overrides=tuple(capital_feature_overrides),
             fundamental_feature_overrides=tuple(fundamental_feature_overrides),
+            adj_factor_overrides=adj_factor_overrides,
         )
 
     def _load_stock_basic_records(self) -> list[dict[str, object]]:
@@ -979,6 +1029,15 @@ def _map_tushare_market_to_board(raw_value: object) -> str:
     if market in market_map:
         return market_map[market]
     return market or "A股"
+
+
+def _limit_rule_code_for_board(board: str) -> str:
+    normalized = board.strip()
+    if normalized in {"创业板", "科创板"}:
+        return "20pct"
+    if normalized == "北交所":
+        return "30pct"
+    return "10pct"
 
 
 def _build_tushare_capital_feature_overrides(
