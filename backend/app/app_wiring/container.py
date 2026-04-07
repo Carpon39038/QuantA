@@ -10,6 +10,7 @@ from backend.app.domains.market_data.repo import (
     load_latest_published_snapshot,
     load_screener_run,
     load_stock_capital_flow,
+    load_stock_corporate_actions,
     load_stock_disclosures,
     load_stock_fundamentals,
     load_stock_indicators,
@@ -18,7 +19,7 @@ from backend.app.domains.market_data.repo import (
     load_system_health,
     load_task_runs,
 )
-from backend.app.shared.telemetry.alerts import load_recent_alerts
+from backend.app.shared.telemetry.alerts import load_recent_alerts, summarize_recent_alerts
 from backend.app.domains.screener.service import build_screener_summary
 
 
@@ -50,6 +51,7 @@ class QuantAContainer:
                 "seed_fixture_path": str(self.settings.fixture_path),
                 "alerts_path": str(self.settings.alerts_path),
                 "source_provider": self.settings.source_provider,
+                "corporate_action_provider": self.settings.corporate_action_provider,
                 "source_universe": self.settings.source_universe,
                 "source_symbol_count": len(self.settings.source_symbols),
                 "source_validation_providers": list(
@@ -186,6 +188,26 @@ class QuantAContainer:
             **payload,
         }
 
+    def stock_corporate_actions_payload(
+        self,
+        *,
+        symbol: str,
+        snapshot_id: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> dict[str, object]:
+        payload = load_stock_corporate_actions(
+            self.settings,
+            symbol=symbol,
+            snapshot_id=snapshot_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return {
+            "api_contract_version": "0.1",
+            **payload,
+        }
+
     def screener_run_payload(
         self,
         *,
@@ -246,6 +268,7 @@ class QuantAContainer:
             "api_contract_version": "0.1",
             "items": load_recent_alerts(self.settings, limit=limit),
             "alerts_path": str(self.settings.alerts_path),
+            "summary": summarize_recent_alerts(self.settings, limit=max(limit, 200)),
         }
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -196,6 +197,29 @@ class FakeTusharePro:
             )
         return FakeFrame([])
 
+    def adj_factor(self, **kwargs) -> FakeFrame:
+        trade_date = str(kwargs.get("trade_date"))
+        if trade_date not in OPEN_DATES:
+            return FakeFrame([])
+        if trade_date == "20260331":
+            ningde_adj_factor = 0.95
+        else:
+            ningde_adj_factor = 1.0
+        return FakeFrame(
+            [
+                {
+                    "ts_code": "300750.SZ",
+                    "trade_date": trade_date,
+                    "adj_factor": ningde_adj_factor,
+                },
+                {
+                    "ts_code": "002475.SZ",
+                    "trade_date": trade_date,
+                    "adj_factor": 1.0,
+                },
+            ]
+        )
+
     def moneyflow_hsgt(self, **kwargs) -> FakeFrame:
         trade_date = str(kwargs.get("trade_date"))
         if trade_date not in OPEN_DATES:
@@ -212,6 +236,44 @@ class FakeTusharePro:
                 }
             ]
         )
+
+    def dividend(self, **kwargs) -> FakeFrame:
+        ts_code = str(kwargs.get("ts_code"))
+        if ts_code == "300750.SZ":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": ts_code,
+                        "end_date": "20251231",
+                        "ann_date": "20260320",
+                        "imp_ann_date": "20260329",
+                        "record_date": "20260331",
+                        "ex_date": "20260401",
+                        "pay_date": "20260401",
+                        "div_listdate": None,
+                        "stk_div": 0.0,
+                        "cash_div_tax": 4.553,
+                    }
+                ]
+            )
+        if ts_code == "002475.SZ":
+            return FakeFrame(
+                [
+                    {
+                        "ts_code": ts_code,
+                        "end_date": "20251231",
+                        "ann_date": "20260325",
+                        "imp_ann_date": None,
+                        "record_date": None,
+                        "ex_date": None,
+                        "pay_date": None,
+                        "div_listdate": None,
+                        "stk_div": 0.5,
+                        "cash_div_tax": 1.25,
+                    }
+                ]
+            )
+        return FakeFrame([])
 
     def fina_indicator_vip(self, **kwargs) -> FakeFrame:
         period = str(kwargs.get("period"))
@@ -387,6 +449,14 @@ def main() -> int:
                         "SELECT COUNT(*) FROM fundamental_feature_daily"
                     ).fetchone()[0]
                 )
+                latest_source_watermark_json = connection.execute(
+                    """
+                    SELECT source_watermark_json
+                    FROM raw_snapshot
+                    ORDER BY snapshot_seq DESC
+                    LIMIT 1
+                    """
+                ).fetchone()[0]
             finally:
                 connection.close()
 
@@ -394,6 +464,14 @@ def main() -> int:
             assert artifact_publish_count == 5
             assert daily_bar_count == 16
             assert fundamental_feature_count == 6
+            latest_shadow_validation = json.loads(latest_source_watermark_json).get(
+                "shadow_validation",
+                {},
+            )
+            assert (
+                latest_shadow_validation["canonical_checks"]["corporate_action"]["status"]
+                == "OK"
+            )
 
         print("[market-data-backfill-smoke] backfill path is healthy")
         return 0

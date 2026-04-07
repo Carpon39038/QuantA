@@ -68,7 +68,14 @@ def main() -> int:
             ).fetchone()
             fundamental_feature_count = int(
                 connection.execute(
-                    "SELECT COUNT(*) FROM fundamental_feature_daily"
+                    "SELECT COUNT(*) FROM fundamental_feature_daily WHERE snapshot_id = ?",
+                    [snapshot_id],
+                ).fetchone()[0]
+            )
+            corporate_action_count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM corporate_action_item WHERE snapshot_id = ?",
+                    [snapshot_id],
                 ).fetchone()[0]
             )
         finally:
@@ -97,6 +104,7 @@ def main() -> int:
             "source_watermark": json.loads(source_watermark_json),
             "artifact_status": json.loads(artifact_status_json),
             "fundamental_feature_count": fundamental_feature_count,
+            "corporate_action_count": corporate_action_count,
             "shadow_validation": json.loads(source_watermark_json).get(
                 "shadow_validation"
             ),

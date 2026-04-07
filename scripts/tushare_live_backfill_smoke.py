@@ -113,6 +113,11 @@ def main() -> int:
                     "SELECT COUNT(*) FROM fundamental_feature_daily"
                 ).fetchone()[0]
             )
+            corporate_action_count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM corporate_action_item"
+                ).fetchone()[0]
+            )
         finally:
             connection.close()
 
@@ -129,6 +134,7 @@ def main() -> int:
             "artifact_publish_count": artifact_publish_count,
             "daily_bar_count": daily_bar_count,
             "fundamental_feature_count": fundamental_feature_count,
+            "corporate_action_count": corporate_action_count,
         }
         print(json.dumps(summary, ensure_ascii=False, indent=2))
 

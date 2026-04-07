@@ -1,0 +1,45 @@
+{
+  "plan_id": "2026-04-07-m20-corporate-action-reconciliation-and-alert-summary",
+  "title": "M20 Corporate Action Reconciliation And Alert Summary",
+  "items": [
+    {
+      "id": "corporate-action-check-in-shadow-validation",
+      "title": "Corporate action reconciliation is part of canonical checks",
+      "description": "Sync augments shadow_validation.canonical_checks with corporate_action and preserves out-of-coverage semantics instead of turning uncovered history into false warnings.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py",
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "alert-summary-api",
+      "title": "Health and alerts payloads expose alert summary",
+      "description": "Both /api/v1/system/health and /api/v1/system/alerts return alert_summary fields that aggregate severity, alert types and provider incidents.",
+      "verification": [
+        "scripts/app_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "workbench-provider-incident-visibility",
+      "title": "Workbench surfaces provider incident summary",
+      "description": "Frontend reads alert summary and shows provider incidents and clearer alert meta, not only the raw alerts list.",
+      "verification": [
+        "node --check frontend/src/app/main.js",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "reconciliation-regression-smoke",
+      "title": "Backfill smoke covers an in-coverage corporate action",
+      "description": "The fake Tushare backfill smoke includes adj_factor transitions and asserts the latest snapshot passes the corporate_action reconciliation check.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

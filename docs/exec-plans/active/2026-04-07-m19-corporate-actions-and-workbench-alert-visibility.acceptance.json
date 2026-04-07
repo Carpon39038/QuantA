@@ -1,0 +1,43 @@
+{
+  "plan_id": "2026-04-07-m19-corporate-actions-and-workbench-alert-visibility",
+  "title": "M19 Corporate Actions And Workbench Alert Visibility",
+  "items": [
+    {
+      "id": "corporate-action-schema-and-seed",
+      "title": "Corporate action sidecar exists in DuckDB",
+      "description": "DuckDB includes corporate_action_item and the default development seed writes deterministic enterprise-action rows for the fixture-backed workbench.",
+      "verification": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "corporate-action-read-path",
+      "title": "Stock corporate-actions API is exposed",
+      "description": "Backend exposes GET /api/v1/stocks/{symbol}/corporate-actions and stock snapshot available_series now includes corporate_action.",
+      "verification": [
+        "scripts/app_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-corporate-action-sync",
+      "title": "Live Tushare sync writes corporate actions",
+      "description": "The isolated Tushare live sync writes non-zero corporate_action_item rows and marks the artifact READY for the current tracked universe.",
+      "verification": [
+        "python3 scripts/tushare_live_sync_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "workbench-alert-visibility",
+      "title": "Workbench surfaces recent alerts",
+      "description": "Frontend workbench reads /api/v1/system/alerts and shows recent runtime alerts together with stock corporate action details.",
+      "verification": [
+        "scripts/smoke.sh",
+        "node --check frontend/src/app/main.js"
+      ],
+      "passes": true
+    }
+  ]
+}

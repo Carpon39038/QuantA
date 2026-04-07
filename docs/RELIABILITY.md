@@ -33,13 +33,16 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 8. 官方披露现已作为独立 sidecar 接入 `official_disclosure_item`；`fixture_json` 开发链走本地 fixture，live 环境默认走 CNInfo 官方检索页与 stock lookup JSON，不再把披露信息混入 canonical 日线 provider 本体。
 9. `tushare` canonical sync 现在会在白天自动回退到最近一个真正有日线的交易日，而不是只依据 `trade_cal` 判断“今天开市”后直接失败。
 10. `shadow_validation` 已接入 `akshare` 与 `baostock` 两条补充源，会把 `open/high/low/close/pre_close/volume/amount/adj_factor` 的逐股对比结果写入 `source_watermark_json`，并经 `/api/v1/snapshot/latest` 与 `/api/v1/system/health` 暴露。
-11. canonical source 现在还会在 sync 时执行 `adj_factor` 覆盖率、板块涨跌停规则和停牌标记一致性的自检；若补充源降级或 canonical quality check 报警，会直接写 runtime-local alerts。
+11. canonical source 现在还会在 sync 时执行 `adj_factor` 覆盖率、板块涨跌停规则、停牌标记一致性，以及 `corporate_action_item + price_series_daily` 的企业行为 reconciliation 自检；若补充源降级或 canonical quality check 报警，会直接写 runtime-local alerts。
+12. 企业行为 sidecar 现已作为独立 `corporate_action_item` 接入：`tushare.dividend` 会先按 `knowledge_date <= biz_date` 做 as-of 过滤，再落到 snapshot 绑定表中，避免未来已知的分红送配事件泄漏进历史回测语义。
+13. 对落在当前价格历史覆盖范围内的企业行为，reconciliation 会检查事件日前后 `adj_factor` 是否发生变化；若事件日早于当前覆盖窗口，则明确记为 `out_of_coverage`，而不是误报为坏数据。
+14. workbench 当前会直接读取 `/api/v1/system/alerts` 并展示最近 alerts 和 provider incident 摘要，`/api/v1/system/health` 与 `/api/v1/system/alerts` 也都会返回 `alert_summary`，降级信号不再只存在本地 JSONL 文件里。
 
 ## Known Risks
 
 1. 真实外部数据源字段漂移和限流仍可能让 `akshare` 或 `baostock` 的补充校验失效；当前实测 `akshare` 在更大研究池上仍会受 Eastmoney 上游链路波动影响，而 `baostock` 的 `adj_factor` 在部分老股票上与 Tushare 存在语义基准差异。
 2. 单机 DuckDB 读写争用仍需要靠“单写者优先”和顺序 smoke 避免。
-3. 当前 source-backed sync 虽已支持更大默认研究池、最小历史回补、CNInfo 公告元数据 sidecar、canonical quality checks、多字段 shadow validation 与调度面接线，但还没有覆盖全市场、完整企业行为修正和自动化长期补数策略。
+3. 当前 source-backed sync 虽已支持更大默认研究池、最小历史回补、CNInfo 公告元数据 sidecar、企业行为 sidecar、企业行为 reconciliation、canonical quality checks、多字段 shadow validation 与调度面接线，但还没有覆盖全市场、完整企业行为修正和自动化长期补数策略。
 4. 官方披露目前还是 metadata-first，尚未纳入公告正文、交易所问询、回复函和跨源去重策略。
 5. 回测成交假设仍偏理想化，尚未引入更真实的滑点和撮合约束。
 
@@ -52,3 +55,4 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 3. 快照发布前验收
 4. 样例回测回放测试
 5. 本地 alerts 到远端通知通道的桥接
+6. 企业行为长期回溯与复权基准核对

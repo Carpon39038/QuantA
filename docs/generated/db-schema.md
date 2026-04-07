@@ -233,6 +233,32 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | snapshot_id, symbol, announcement_id |
 
+### `corporate_action_item`
+
+企业行为 sidecar，供个股页解释分红送配和除权除息事件。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `trade_date` | `DATE` | 事件日期; required |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `action_id` | `VARCHAR` | 企业行为标识; required |
+| `report_period` | `DATE` | 方案对应报告期; nullable |
+| `knowledge_date` | `DATE` | 系统已知日期; nullable |
+| `ann_date` | `DATE` | 董事会/股东大会公告日期; nullable |
+| `imp_ann_date` | `DATE` | 实施公告日期; nullable |
+| `record_date` | `DATE` | 股权登记日; nullable |
+| `ex_date` | `DATE` | 除权除息日; nullable |
+| `pay_date` | `DATE` | 派息日; nullable |
+| `div_listdate` | `DATE` | 红股上市日; nullable |
+| `stock_div` | `DOUBLE` | 每10股送转股数; nullable |
+| `cash_div_tax` | `DOUBLE` | 每10股含税派现; nullable |
+| `action_stage` | `VARCHAR` | 公告阶段; nullable |
+| `action_summary` | `VARCHAR` | 动作摘要; nullable |
+| `source` | `VARCHAR` | 来源说明; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | snapshot_id, symbol, action_id |
+
 ### `market_regime_daily`
 
 市场概览页读取的聚合市场状态。

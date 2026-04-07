@@ -222,6 +222,9 @@ def main() -> int:
         disclosures_payload = fetch_json(
             f"{backend_origin}/api/v1/stocks/300750.SZ/disclosures"
         )
+        corporate_actions_payload = fetch_json(
+            f"{backend_origin}/api/v1/stocks/300750.SZ/corporate-actions"
+        )
         screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
         screener_results_payload = fetch_json(
             f"{backend_origin}/api/v1/screener/runs/{screener_latest_payload['run_id']}/results"
@@ -364,12 +367,16 @@ def main() -> int:
         assert fundamentals_payload["range"]["row_count"] == 0
         assert fundamentals_payload["latest_fundamental_feature"] is None
         assert stock_snapshot_payload["available_series"]["official_disclosure"]["row_count"] >= 2
+        assert stock_snapshot_payload["available_series"]["corporate_action"]["row_count"] >= 1
         assert disclosures_payload["range"]["row_count"] >= 2
         assert disclosures_payload["latest_disclosure"] is not None
         assert "公告" in disclosures_payload["latest_disclosure"]["title"]
         assert disclosures_payload["items"][-1]["detail_url"].startswith(
             "https://www.cninfo.com.cn/new/disclosure/detail"
         )
+        assert corporate_actions_payload["range"]["row_count"] >= 1
+        assert corporate_actions_payload["latest_corporate_action"] is not None
+        assert corporate_actions_payload["items"][-1]["action_summary"]
         assert screener_latest_payload["run_id"].startswith("screener_run_")
         assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])
         assert screener_latest_payload["result_count"] >= 3
@@ -400,11 +407,13 @@ def main() -> int:
         assert system_health_payload["task_count"] == len(task_runs_payload["items"])
         assert system_health_payload["table_counts"]["backtest_trade"] >= 4
         assert system_health_payload["alert_count"] == baseline_alert_count
+        assert system_health_payload["alert_summary"]["window_count"] == baseline_alert_count
         assert system_health_payload["shadow_validation"]["status"] in {
             "SKIPPED",
             "UNKNOWN",
         }
         assert len(alerts_payload["items"]) == min(baseline_alert_count, 20)
+        assert alerts_payload["summary"]["window_count"] == baseline_alert_count
         assert daily_sync_post_payload["status"] == "accepted"
         assert daily_sync_post_payload["task"]["task_name"] == "daily_sync"
         assert daily_sync_post_payload["task"]["status"] == "PENDING"

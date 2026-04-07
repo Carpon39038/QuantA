@@ -20,6 +20,8 @@ const capitalGridNode = document.querySelector("#capital-grid");
 const fundamentalGridNode = document.querySelector("#fundamental-grid");
 const disclosureMetaNode = document.querySelector("#disclosure-meta");
 const disclosureListNode = document.querySelector("#disclosure-list");
+const corporateActionMetaNode = document.querySelector("#corporate-action-meta");
+const corporateActionListNode = document.querySelector("#corporate-action-list");
 const strategyNameNode = document.querySelector("#strategy-name");
 const metricGridNode = document.querySelector("#metric-grid");
 const backtestRequestNode = document.querySelector("#backtest-request");
@@ -27,6 +29,8 @@ const equityChartNode = document.querySelector("#equity-chart");
 const backtestNotesNode = document.querySelector("#backtest-notes");
 const tradeTableBodyNode = document.querySelector("#trade-table-body");
 const taskGridNode = document.querySelector("#task-grid");
+const alertMetaNode = document.querySelector("#alert-meta");
+const alertListNode = document.querySelector("#alert-list");
 
 function formatPercent(value, digits = 2) {
   if (value == null || Number.isNaN(Number(value))) {
@@ -125,11 +129,21 @@ function buildLineChart(items, valueKey, accentClass) {
   `;
 }
 
-function renderStatusStrip(snapshotPayload, screenerPayload, backtestPayload, focusSymbol) {
+function renderStatusStrip(
+  snapshotPayload,
+  screenerPayload,
+  backtestPayload,
+  systemHealthPayload,
+  alertsPayload,
+  focusSymbol
+) {
   const validation = snapshotPayload.shadow_validation ?? {};
   const validationProviders = validation.providers ?? [];
   const okProviderCount = validationProviders.filter((item) => item.status === "OK").length;
   const warnProviderCount = validationProviders.filter((item) => item.status === "WARN").length;
+  const alertSummary = systemHealthPayload.alert_summary ?? alertsPayload.summary ?? {};
+  const latestAlert = alertsPayload.items?.[alertsPayload.items.length - 1] ?? null;
+  const topProviderAlert = alertSummary.provider_alerts?.[0] ?? null;
   const cards = [
     {
       label: "发布快照",
@@ -149,6 +163,15 @@ function renderStatusStrip(snapshotPayload, screenerPayload, backtestPayload, fo
             .map((item) => `${item.provider}:${item.status}`)
             .join(" / ")}`
         : "未配置"
+    },
+    {
+      label: "告警",
+      value: String(systemHealthPayload.alert_count ?? 0),
+      detail: topProviderAlert
+        ? `${topProviderAlert.provider} · ${topProviderAlert.latest_category ?? topProviderAlert.latest_status ?? "incident"}`
+        : latestAlert
+        ? `${latestAlert.alert_type} · ${latestAlert.severity}`
+        : "近期无告警"
     },
     {
       label: "选股运行",
@@ -250,6 +273,7 @@ function renderFocusStock({
   capitalFlow,
   fundamentals,
   disclosures,
+  corporateActions,
   priceSeries
 }) {
   focusSymbolNode.textContent = focusCandidate.symbol;
@@ -388,31 +412,61 @@ function renderFocusStock({
     empty.className = "disclosure-empty";
     empty.textContent = "当前快照下暂无官方披露元数据。";
     disclosureListNode.appendChild(empty);
+  } else {
+    for (const item of disclosureItems) {
+      const li = document.createElement("li");
+      li.className = "disclosure-item";
+
+      const link = document.createElement("a");
+      link.className = "disclosure-link";
+      link.href = item.detail_url ?? item.pdf_url ?? "#";
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = item.title;
+
+      const meta = document.createElement("p");
+      meta.className = "disclosure-meta";
+      meta.textContent = [
+        item.trade_date ?? "--",
+        item.announcement_type_name ?? item.page_column ?? "官方披露",
+        item.adjunct_type ?? "PDF"
+      ].join(" · ");
+
+      li.appendChild(link);
+      li.appendChild(meta);
+      disclosureListNode.appendChild(li);
+    }
+  }
+
+  const corporateActionItems = corporateActions.items.slice(-4).reverse();
+  corporateActionMetaNode.textContent = `${corporateActions.range.row_count} 条企业行为`;
+  corporateActionListNode.innerHTML = "";
+  if (!corporateActionItems.length) {
+    const empty = document.createElement("li");
+    empty.className = "disclosure-empty";
+    empty.textContent = "当前快照下暂无企业行为 sidecar。";
+    corporateActionListNode.appendChild(empty);
     return;
   }
 
-  for (const item of disclosureItems) {
+  for (const item of corporateActionItems) {
     const li = document.createElement("li");
     li.className = "disclosure-item";
 
-    const link = document.createElement("a");
-    link.className = "disclosure-link";
-    link.href = item.detail_url ?? item.pdf_url ?? "#";
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.textContent = item.title;
+    const headline = document.createElement("strong");
+    headline.textContent = item.action_summary ?? "企业行为";
 
     const meta = document.createElement("p");
     meta.className = "disclosure-meta";
     meta.textContent = [
       item.trade_date ?? "--",
-      item.announcement_type_name ?? item.page_column ?? "官方披露",
-      item.adjunct_type ?? "PDF"
+      item.action_stage ?? "ANNOUNCED",
+      item.report_period ?? item.knowledge_date ?? "--"
     ].join(" · ");
 
-    li.appendChild(link);
+    li.appendChild(headline);
     li.appendChild(meta);
-    disclosureListNode.appendChild(li);
+    corporateActionListNode.appendChild(li);
   }
 }
 
@@ -452,7 +506,7 @@ function renderBacktest(backtestPayload) {
   }
 }
 
-function renderTaskStatus(snapshotPayload) {
+function renderTaskStatus(snapshotPayload, systemHealthPayload, alertsPayload) {
   taskGridNode.innerHTML = "";
   const taskEntries = [
     ["数据更新", snapshotPayload.task_status.data_update],
@@ -473,6 +527,66 @@ function renderTaskStatus(snapshotPayload) {
       <strong>${value}</strong>
     `;
     taskGridNode.appendChild(card);
+  }
+
+  const alertSummary = alertsPayload.summary ?? systemHealthPayload.alert_summary ?? {};
+  const warningCount = Number(alertSummary.severity_counts?.warning ?? 0);
+  const providerIncidents = alertSummary.provider_alerts ?? [];
+  const metaParts = [`${systemHealthPayload.alert_count ?? 0} 条 runtime alerts`];
+  if (warningCount > 0) {
+    metaParts.push(`${warningCount} 条 warning`);
+  }
+  if (providerIncidents.length > 0) {
+    metaParts.push(`${providerIncidents.length} 个 provider incident`);
+  }
+  alertMetaNode.textContent = metaParts.join(" · ");
+  alertListNode.innerHTML = "";
+  for (const providerItem of providerIncidents.slice(0, 2)) {
+    const li = document.createElement("li");
+    li.className = "disclosure-item";
+
+    const headline = document.createElement("strong");
+    headline.textContent = `${providerItem.provider} · ${providerItem.latest_category ?? providerItem.latest_status ?? "incident"}`;
+
+    const meta = document.createElement("p");
+    meta.className = "disclosure-meta";
+    meta.textContent = [
+      providerItem.latest_triggered_at ?? "--",
+      `${providerItem.alert_count ?? 0} 次`,
+      providerItem.latest_status ?? "warning"
+    ].join(" · ");
+
+    li.appendChild(headline);
+    li.appendChild(meta);
+    alertListNode.appendChild(li);
+  }
+  const recentAlerts = (alertsPayload.items ?? []).slice(-4).reverse();
+  if (!recentAlerts.length) {
+    const empty = document.createElement("li");
+    empty.className = "disclosure-empty";
+    empty.textContent = "当前 runtime 没有新增告警。";
+    alertListNode.appendChild(empty);
+    return;
+  }
+
+  for (const item of recentAlerts) {
+    const li = document.createElement("li");
+    li.className = "disclosure-item";
+
+    const headline = document.createElement("strong");
+    headline.textContent = item.message ?? item.alert_type ?? "告警";
+
+    const meta = document.createElement("p");
+    meta.className = "disclosure-meta";
+    meta.textContent = [
+      item.triggered_at ?? "--",
+      item.alert_type ?? "alert",
+      item.severity ?? "warning"
+    ].join(" · ");
+
+    li.appendChild(headline);
+    li.appendChild(meta);
+    alertListNode.appendChild(li);
   }
 }
 
@@ -504,13 +618,16 @@ async function fetchWorkbenchData() {
     throw new Error("latest screener returned no focus candidate");
   }
 
-  const [stockSnapshot, indicators, capitalFlow, fundamentals, disclosures, priceSeries] = await Promise.all([
+  const [stockSnapshot, indicators, capitalFlow, fundamentals, disclosures, corporateActions, priceSeries, systemHealth, alerts] = await Promise.all([
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/snapshot`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/indicators`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/capital-flow`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/fundamentals`),
     fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/disclosures`),
-    fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/kline?dataset=price_series`)
+    fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/corporate-actions`),
+    fetchJson(`/api/v1/stocks/${focusCandidate.symbol}/kline?dataset=price_series`),
+    fetchJson("/api/v1/system/health"),
+    fetchJson("/api/v1/system/alerts")
   ]);
 
   return {
@@ -523,7 +640,10 @@ async function fetchWorkbenchData() {
     capitalFlow,
     fundamentals,
     disclosures,
-    priceSeries
+    corporateActions,
+    priceSeries,
+    systemHealth,
+    alerts
   };
 }
 
@@ -532,12 +652,19 @@ async function main() {
     const data = await fetchWorkbenchData();
     loadStatusNode.textContent = "已读取 READY 快照与详情";
     snapshotRefNode.textContent = `${data.snapshot.snapshot_id} / ${data.snapshot.raw_snapshot_id} / ${data.snapshot.runtime?.source_provider ?? "--"}`;
-    renderStatusStrip(data.snapshot, data.screener, data.backtest, data.focusCandidate.symbol);
+    renderStatusStrip(
+      data.snapshot,
+      data.screener,
+      data.backtest,
+      data.systemHealth,
+      data.alerts,
+      data.focusCandidate.symbol
+    );
     renderMarketOverview(data.snapshot);
     renderCandidates(data.screener);
     renderFocusStock(data);
     renderBacktest(data.backtest);
-    renderTaskStatus(data.snapshot);
+    renderTaskStatus(data.snapshot, data.systemHealth, data.alerts);
   } catch (error) {
     console.error(error);
     setError("前端未能读取研究工作台数据，请先确认 backend/frontend dev server 都已启动。");

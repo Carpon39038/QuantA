@@ -8,6 +8,10 @@ from backend.app.app_wiring.settings import AppSettings, load_settings
 from backend.app.domains.analysis.bootstrap import materialize_analysis_snapshot
 from backend.app.domains.market_data.bootstrap import ensure_dev_duckdb
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
+from backend.app.shared.providers.corporate_action_source import (
+    CorporateActionProvider,
+    build_corporate_action_provider,
+)
 from backend.app.shared.providers.duckdb import connect_duckdb
 from backend.app.shared.providers.market_data_source import (
     MarketDataProvider,
@@ -36,10 +40,12 @@ def sync_market_data(
 
     provider = build_market_data_provider(settings)
     disclosure_provider = build_official_disclosure_provider(settings)
+    corporate_action_provider = build_corporate_action_provider(settings)
     return _sync_market_data_with_provider(
         settings,
         provider=provider,
         disclosure_provider=disclosure_provider,
+        corporate_action_provider=corporate_action_provider,
         biz_date=biz_date,
     )
 
@@ -55,6 +61,7 @@ def backfill_market_data(
 
     provider = build_market_data_provider(settings)
     disclosure_provider = build_official_disclosure_provider(settings)
+    corporate_action_provider = build_corporate_action_provider(settings)
     open_biz_dates = provider.list_open_biz_dates(
         start_biz_date=start_biz_date,
         end_biz_date=end_biz_date,
@@ -81,6 +88,7 @@ def backfill_market_data(
                 settings,
                 provider=provider,
                 disclosure_provider=disclosure_provider,
+                corporate_action_provider=corporate_action_provider,
                 biz_date=biz_date,
             )
         )
@@ -110,6 +118,7 @@ def _sync_market_data_with_provider(
     *,
     provider: MarketDataProvider,
     disclosure_provider: OfficialDisclosureProvider,
+    corporate_action_provider: CorporateActionProvider,
     biz_date: str | None = None,
 ) -> dict[str, object]:
     _consume_simulated_source_failure(settings, biz_date=biz_date)
@@ -141,6 +150,10 @@ def _sync_market_data_with_provider(
         market_highlights.append("canonical_quality_warn")
     market_overview["highlights"] = market_highlights
     disclosure_items = disclosure_provider.fetch_disclosures(
+        biz_date=source_snapshot.biz_date,
+        stock_basic=source_snapshot.stock_basic,
+    )
+    corporate_action_items = corporate_action_provider.fetch_actions(
         biz_date=source_snapshot.biz_date,
         stock_basic=source_snapshot.stock_basic,
     )
@@ -250,6 +263,7 @@ def _sync_market_data_with_provider(
                         "capital_feature_daily",
                         "fundamental_feature_daily",
                         "official_disclosure_item",
+                        "corporate_action_item",
                         "screener_run",
                         "screener_result",
                         "backtest_request",
@@ -269,6 +283,7 @@ def _sync_market_data_with_provider(
                         "capital_feature_daily": "PENDING",
                         "fundamental_feature_daily": "PENDING",
                         "official_disclosure_item": "PENDING",
+                        "corporate_action_item": "PENDING",
                         "screener_run": "PENDING",
                         "screener_result": "PENDING",
                         "backtest_request": "PENDING",
@@ -288,6 +303,11 @@ def _sync_market_data_with_provider(
             connection,
             snapshot_id=snapshot_id,
             rows=list(disclosure_items),
+        )
+        corporate_action_count = _insert_corporate_action_rows(
+            connection,
+            snapshot_id=snapshot_id,
+            rows=list(corporate_action_items),
         )
         price_series_count = _materialize_price_series_snapshot(
             connection,
@@ -310,6 +330,23 @@ def _sync_market_data_with_provider(
             capital_feature_overrides=source_snapshot.capital_feature_overrides,
             fundamental_feature_overrides=source_snapshot.fundamental_feature_overrides,
         )
+        shadow_validation = _augment_shadow_validation_with_corporate_action_check(
+            connection,
+            shadow_validation=shadow_validation,
+            snapshot_id=snapshot_id,
+            canonical_provider=source_snapshot.provider,
+        )
+        source_watermark["shadow_validation"] = shadow_validation
+        _update_raw_snapshot_source_watermark(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            source_watermark={
+                **source_watermark,
+                "provider": source_snapshot.provider,
+                "source": source_snapshot.source,
+                "fetched_at": source_snapshot.fetched_at,
+            },
+        )
         _update_artifact_publish_status(
             connection,
             snapshot_id=snapshot_id,
@@ -322,6 +359,7 @@ def _sync_market_data_with_provider(
                 "capital_feature_daily": "READY",
                 "fundamental_feature_daily": "READY",
                 "official_disclosure_item": "READY",
+                "corporate_action_item": "READY",
                 "screener_run": "PENDING",
                 "screener_result": "PENDING",
                 "backtest_request": "PENDING",
@@ -357,6 +395,7 @@ def _sync_market_data_with_provider(
             "price_series_daily": price_series_count,
             "market_regime_daily": market_regime_count,
             "official_disclosure_item": official_disclosure_count,
+            "corporate_action_item": corporate_action_count,
             **analysis_counts,
         },
         "shadow_validation": shadow_validation,
@@ -459,6 +498,7 @@ def delete_snapshot_artifacts(
         connection.execute("DELETE FROM capital_feature_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM fundamental_feature_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM official_disclosure_item WHERE snapshot_id = ?", [snapshot_id])
+        connection.execute("DELETE FROM corporate_action_item WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM market_regime_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM artifact_publish WHERE snapshot_id = ?", [snapshot_id])
@@ -827,6 +867,252 @@ def _emit_shadow_validation_alerts(
         )
 
 
+def _augment_shadow_validation_with_corporate_action_check(
+    connection,
+    *,
+    shadow_validation: dict[str, object],
+    snapshot_id: str,
+    canonical_provider: str,
+) -> dict[str, object]:
+    canonical_checks = dict(shadow_validation.get("canonical_checks", {}))
+    if canonical_provider == "fixture_json":
+        canonical_checks["corporate_action"] = {
+            "status": "SKIPPED",
+            "message": "fixture_json skips corporate action reconciliation",
+        }
+    else:
+        canonical_checks["corporate_action"] = _build_corporate_action_check(
+            connection,
+            snapshot_id=snapshot_id,
+        )
+    canonical_check_status = _merge_check_status(
+        check.get("status")
+        for check in canonical_checks.values()
+        if isinstance(check, dict)
+    )
+    provider_items = shadow_validation.get("providers", [])
+    provider_statuses = {
+        str(item.get("status"))
+        for item in provider_items
+        if isinstance(item, dict)
+    }
+    if canonical_check_status == "WARN":
+        overall_status = "WARN"
+    elif not provider_items:
+        overall_status = canonical_check_status
+    elif "WARN" in provider_statuses:
+        overall_status = "WARN"
+    elif "OK" in provider_statuses:
+        overall_status = "OK"
+    elif provider_statuses == {"UNAVAILABLE"}:
+        overall_status = "UNAVAILABLE"
+    else:
+        overall_status = "SKIPPED"
+
+    return {
+        **shadow_validation,
+        "status": overall_status,
+        "canonical_checks": canonical_checks,
+        "canonical_check_status": canonical_check_status,
+    }
+
+
+def _build_corporate_action_check(
+    connection,
+    *,
+    snapshot_id: str,
+) -> dict[str, object]:
+    rows = connection.execute(
+        """
+        WITH price_history AS (
+          SELECT
+            symbol,
+            trade_date,
+            adj_factor,
+            LAG(adj_factor) OVER (
+              PARTITION BY symbol
+              ORDER BY trade_date ASC
+            ) AS previous_adj_factor
+          FROM price_series_daily
+          WHERE snapshot_id = ?
+            AND price_basis = 'raw'
+        ),
+        price_coverage AS (
+          SELECT
+            symbol,
+            MIN(trade_date) AS min_trade_date,
+            MAX(trade_date) AS max_trade_date
+          FROM price_history
+          GROUP BY symbol
+        )
+        SELECT
+          ca.symbol,
+          ca.action_id,
+          ca.action_summary,
+          ca.trade_date,
+          ca.ex_date,
+          ca.stock_div,
+          ca.cash_div_tax,
+          coverage.min_trade_date,
+          coverage.max_trade_date,
+          price.adj_factor,
+          price.previous_adj_factor
+        FROM corporate_action_item ca
+        LEFT JOIN price_coverage coverage
+          ON coverage.symbol = ca.symbol
+        LEFT JOIN price_history price
+          ON price.symbol = ca.symbol
+         AND price.trade_date = COALESCE(ca.ex_date, ca.trade_date)
+        WHERE ca.snapshot_id = ?
+          AND ca.action_stage = 'IMPLEMENTED'
+          AND COALESCE(ca.ex_date, ca.trade_date) IS NOT NULL
+        ORDER BY ca.symbol ASC, COALESCE(ca.ex_date, ca.trade_date) ASC, ca.action_id ASC
+        """,
+        [snapshot_id, snapshot_id],
+    ).fetchall()
+
+    if not rows:
+        return {
+            "status": "SKIPPED",
+            "message": "no implemented corporate actions to reconcile",
+            "checked_action_count": 0,
+        }
+
+    checked_action_count = 0
+    aligned_action_count = 0
+    unchanged_factor_count = 0
+    boundary_gap_count = 0
+    out_of_coverage_count = 0
+    samples: list[dict[str, object]] = []
+
+    for (
+        symbol,
+        action_id,
+        action_summary,
+        trade_date,
+        ex_date,
+        stock_div,
+        cash_div_tax,
+        min_trade_date,
+        max_trade_date,
+        adj_factor,
+        previous_adj_factor,
+    ) in rows:
+        event_date = str(ex_date or trade_date)
+        coverage_start = str(min_trade_date) if min_trade_date is not None else None
+        coverage_end = str(max_trade_date) if max_trade_date is not None else None
+
+        if coverage_start is None or coverage_end is None or event_date < coverage_start:
+            out_of_coverage_count += 1
+            continue
+        if event_date > coverage_end:
+            continue
+
+        checked_action_count += 1
+        current_adj_factor = float(adj_factor) if adj_factor is not None else None
+        previous_value = (
+            float(previous_adj_factor) if previous_adj_factor is not None else None
+        )
+
+        if current_adj_factor is None or previous_value is None:
+            boundary_gap_count += 1
+            if len(samples) < 5:
+                samples.append(
+                    {
+                        "symbol": str(symbol),
+                        "action_id": str(action_id),
+                        "event_date": event_date,
+                        "reason": "boundary_gap",
+                        "action_summary": str(action_summary or ""),
+                        "coverage_start": coverage_start,
+                        "coverage_end": coverage_end,
+                    }
+                )
+            continue
+
+        if abs(current_adj_factor - previous_value) <= 1e-9:
+            unchanged_factor_count += 1
+            if len(samples) < 5:
+                samples.append(
+                    {
+                        "symbol": str(symbol),
+                        "action_id": str(action_id),
+                        "event_date": event_date,
+                        "reason": "unchanged_adj_factor",
+                        "action_summary": str(action_summary or ""),
+                        "stock_div": float(stock_div) if stock_div is not None else None,
+                        "cash_div_tax": float(cash_div_tax)
+                        if cash_div_tax is not None
+                        else None,
+                        "previous_adj_factor": previous_value,
+                        "adj_factor": current_adj_factor,
+                    }
+                )
+            continue
+
+        aligned_action_count += 1
+
+    if checked_action_count == 0:
+        return {
+            "status": "SKIPPED",
+            "message": (
+                "no implemented corporate actions fell within current price history coverage"
+            ),
+            "checked_action_count": 0,
+            "out_of_coverage_count": out_of_coverage_count,
+        }
+
+    status = "WARN" if unchanged_factor_count else "OK"
+    message = (
+        f"corporate action reconciliation aligned {aligned_action_count}/{checked_action_count}"
+        " in-coverage events"
+    )
+    if unchanged_factor_count:
+        message += f"; unchanged adj_factor {unchanged_factor_count}"
+    if boundary_gap_count:
+        message += f"; boundary gaps {boundary_gap_count}"
+    if out_of_coverage_count:
+        message += f"; out_of_coverage {out_of_coverage_count}"
+    return {
+        "status": status,
+        "message": message,
+        "checked_action_count": checked_action_count,
+        "aligned_action_count": aligned_action_count,
+        "unchanged_factor_count": unchanged_factor_count,
+        "boundary_gap_count": boundary_gap_count,
+        "out_of_coverage_count": out_of_coverage_count,
+        "samples": samples,
+    }
+
+
+def _update_raw_snapshot_source_watermark(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    source_watermark: dict[str, object],
+) -> None:
+    connection.execute(
+        """
+        UPDATE raw_snapshot
+        SET source_watermark_json = ?
+        WHERE raw_snapshot_id = ?
+        """,
+        [
+            json.dumps(source_watermark, ensure_ascii=False),
+            raw_snapshot_id,
+        ],
+    )
+
+
+def _merge_check_status(statuses) -> str:
+    normalized = {str(status) for status in statuses if str(status) != "SKIPPED"}
+    if not normalized:
+        return "SKIPPED"
+    if "WARN" in normalized:
+        return "WARN"
+    return "OK"
+
+
 def _load_previous_adj_factor_map(
     connection,
     *,
@@ -952,6 +1238,70 @@ def _insert_official_disclosure_rows(
           source,
           updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        normalized_rows,
+    )
+    return len(normalized_rows)
+
+
+def _insert_corporate_action_rows(
+    connection,
+    *,
+    snapshot_id: str,
+    rows: list[dict[str, object]],
+) -> int:
+    connection.execute(
+        "DELETE FROM corporate_action_item WHERE snapshot_id = ?",
+        [snapshot_id],
+    )
+    if not rows:
+        return 0
+
+    normalized_rows = [
+        [
+            str(row["symbol"]),
+            str(row["trade_date"]),
+            snapshot_id,
+            str(row["action_id"]),
+            row.get("report_period"),
+            row.get("knowledge_date"),
+            row.get("ann_date"),
+            row.get("imp_ann_date"),
+            row.get("record_date"),
+            row.get("ex_date"),
+            row.get("pay_date"),
+            row.get("div_listdate"),
+            row.get("stock_div"),
+            row.get("cash_div_tax"),
+            row.get("action_stage"),
+            row.get("action_summary"),
+            str(row.get("source", "corporate_action")),
+            str(row["updated_at"]),
+        ]
+        for row in rows
+    ]
+    connection.executemany(
+        """
+        INSERT INTO corporate_action_item (
+          symbol,
+          trade_date,
+          snapshot_id,
+          action_id,
+          report_period,
+          knowledge_date,
+          ann_date,
+          imp_ann_date,
+          record_date,
+          ex_date,
+          pay_date,
+          div_listdate,
+          stock_div,
+          cash_div_tax,
+          action_stage,
+          action_summary,
+          source,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         normalized_rows,
     )

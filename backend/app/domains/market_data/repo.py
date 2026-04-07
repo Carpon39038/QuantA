@@ -6,7 +6,7 @@ from typing import Any
 
 from backend.app.app_wiring.settings import AppSettings
 from backend.app.shared.providers.duckdb import connect_duckdb
-from backend.app.shared.telemetry.alerts import load_recent_alerts
+from backend.app.shared.telemetry.alerts import load_recent_alerts, summarize_recent_alerts
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -1015,6 +1015,131 @@ def _query_official_disclosure_asof_rows(
     ]
 
 
+def _query_corporate_action_asof_rows(
+    connection,
+    *,
+    snapshot_id: str,
+    symbol: str,
+    date_from: str | None,
+    date_to: str | None,
+) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """
+        WITH target AS (
+          SELECT publish_seq
+          FROM artifact_publish
+          WHERE snapshot_id = ?
+        ),
+        ranked AS (
+          SELECT
+            ca.trade_date,
+            ca.action_id,
+            ca.report_period,
+            ca.knowledge_date,
+            ca.ann_date,
+            ca.imp_ann_date,
+            ca.record_date,
+            ca.ex_date,
+            ca.pay_date,
+            ca.div_listdate,
+            ca.stock_div,
+            ca.cash_div_tax,
+            ca.action_stage,
+            ca.action_summary,
+            ca.source,
+            ca.updated_at,
+            ca.snapshot_id AS effective_snapshot_id,
+            ap.publish_seq AS effective_publish_seq,
+            ROW_NUMBER() OVER (
+              PARTITION BY ca.symbol, ca.action_id
+              ORDER BY ap.publish_seq DESC
+            ) AS row_num
+          FROM corporate_action_item ca
+          JOIN artifact_publish ap
+            ON ap.snapshot_id = ca.snapshot_id
+          JOIN target
+            ON ap.publish_seq <= target.publish_seq
+          WHERE ca.symbol = ?
+            AND (? IS NULL OR ca.trade_date >= CAST(? AS DATE))
+            AND (? IS NULL OR ca.trade_date <= CAST(? AS DATE))
+        )
+        SELECT
+          trade_date,
+          action_id,
+          report_period,
+          knowledge_date,
+          ann_date,
+          imp_ann_date,
+          record_date,
+          ex_date,
+          pay_date,
+          div_listdate,
+          stock_div,
+          cash_div_tax,
+          action_stage,
+          action_summary,
+          source,
+          updated_at,
+          effective_snapshot_id,
+          effective_publish_seq
+        FROM ranked
+        WHERE row_num = 1
+        ORDER BY trade_date ASC, knowledge_date ASC, action_id ASC
+        """,
+        [
+            snapshot_id,
+            symbol,
+            date_from,
+            date_from,
+            date_to,
+            date_to,
+        ],
+    ).fetchall()
+
+    return [
+        {
+            "trade_date": _isoformat(trade_date),
+            "action_id": str(action_id),
+            "report_period": _isoformat(report_period) if report_period is not None else None,
+            "knowledge_date": _isoformat(knowledge_date) if knowledge_date is not None else None,
+            "ann_date": _isoformat(ann_date) if ann_date is not None else None,
+            "imp_ann_date": _isoformat(imp_ann_date) if imp_ann_date is not None else None,
+            "record_date": _isoformat(record_date) if record_date is not None else None,
+            "ex_date": _isoformat(ex_date) if ex_date is not None else None,
+            "pay_date": _isoformat(pay_date) if pay_date is not None else None,
+            "div_listdate": _isoformat(div_listdate) if div_listdate is not None else None,
+            "stock_div": float(stock_div) if stock_div is not None else None,
+            "cash_div_tax": float(cash_div_tax) if cash_div_tax is not None else None,
+            "action_stage": str(action_stage) if action_stage else None,
+            "action_summary": str(action_summary) if action_summary else None,
+            "source": str(source),
+            "updated_at": _isoformat(updated_at),
+            "effective_snapshot_id": str(effective_snapshot_id),
+            "effective_publish_seq": int(effective_publish_seq),
+        }
+        for (
+            trade_date,
+            action_id,
+            report_period,
+            knowledge_date,
+            ann_date,
+            imp_ann_date,
+            record_date,
+            ex_date,
+            pay_date,
+            div_listdate,
+            stock_div,
+            cash_div_tax,
+            action_stage,
+            action_summary,
+            source,
+            updated_at,
+            effective_snapshot_id,
+            effective_publish_seq,
+        ) in rows
+    ]
+
+
 def _build_range_summary(items: list[dict[str, object]]) -> dict[str, object]:
     if not items:
         return {"row_count": 0, "date_from": None, "date_to": None}
@@ -1334,6 +1459,15 @@ def load_stock_snapshot(
                         date_to=None,
                     )
                 ),
+                "corporate_action": _build_range_summary(
+                    _query_corporate_action_asof_rows(
+                        connection,
+                        snapshot_id=str(published_snapshot["snapshot_id"]),
+                        symbol=symbol,
+                        date_from=None,
+                        date_to=None,
+                    )
+                ),
             },
             "latest_daily_bar": daily_bar_items[-1] if daily_bar_items else None,
             "latest_price_bar": price_series_items[-1] if price_series_items else None,
@@ -1581,6 +1715,42 @@ def load_stock_disclosures(
             },
             "range": _build_range_summary(items),
             "latest_disclosure": items[-1] if items else None,
+            "items": items,
+        }
+    finally:
+        connection.close()
+
+
+def load_stock_corporate_actions(
+    settings: AppSettings,
+    *,
+    symbol: str,
+    snapshot_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, object]:
+    connection = _open_connection(settings)
+    try:
+        stock = _fetch_stock_profile(connection, symbol)
+        published_snapshot = _fetch_published_snapshot_meta(connection, snapshot_id)
+        items = _query_corporate_action_asof_rows(
+            connection,
+            snapshot_id=str(published_snapshot["snapshot_id"]),
+            symbol=symbol,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        return {
+            "symbol": stock["symbol"],
+            "display_name": stock["display_name"],
+            "as_of": {
+                "snapshot_id": published_snapshot["snapshot_id"],
+                "publish_seq": published_snapshot["publish_seq"],
+                "raw_snapshot_id": published_snapshot["raw_snapshot_id"],
+            },
+            "range": _build_range_summary(items),
+            "latest_corporate_action": items[-1] if items else None,
             "items": items,
         }
     finally:
@@ -2271,6 +2441,7 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
             connection,
             str(latest_snapshot["raw_snapshot_id"]),
         )
+        alert_summary = summarize_recent_alerts(settings, limit=200)
         table_counts = {
             table_name: int(
                 connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
@@ -2285,6 +2456,7 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
                 "capital_feature_daily",
                 "fundamental_feature_daily",
                 "official_disclosure_item",
+                "corporate_action_item",
                 "screener_run",
                 "screener_result",
                 "backtest_request",
@@ -2313,7 +2485,8 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
             "alerts_path": str(settings.alerts_path),
             "table_counts": table_counts,
             "task_count": task_count,
-            "alert_count": len(load_recent_alerts(settings, limit=200)),
+            "alert_count": int(alert_summary["window_count"]),
+            "alert_summary": alert_summary,
             "shadow_validation": raw_snapshot["source_watermark"].get(
                 "shadow_validation",
                 {

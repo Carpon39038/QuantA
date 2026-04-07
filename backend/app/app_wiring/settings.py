@@ -66,8 +66,10 @@ class AppSettings:
     fixture_path: Path
     source_fixture_dir: Path
     disclosure_fixture_dir: Path
+    corporate_action_fixture_dir: Path
     source_provider: str
     disclosure_provider: str
+    corporate_action_provider: str
     source_universe: str
     source_symbols: tuple[str, ...]
     source_validation_providers: tuple[str, ...]
@@ -139,8 +141,19 @@ def load_settings() -> AppSettings:
                 "backend/app/fixtures/source_disclosures",
             ),
         ),
+        corporate_action_fixture_dir=_resolve_runtime_path(
+            root_dir,
+            os.environ.get(
+                "QUANTA_CORPORATE_ACTION_FIXTURE_DIR",
+                "backend/app/fixtures/source_corporate_actions",
+            ),
+        ),
         source_provider=os.environ.get("QUANTA_SOURCE_PROVIDER", "fixture_json"),
         disclosure_provider=os.environ.get("QUANTA_DISCLOSURE_PROVIDER", "auto"),
+        corporate_action_provider=os.environ.get(
+            "QUANTA_CORPORATE_ACTION_PROVIDER",
+            "auto",
+        ),
         source_universe=source_universe,
         source_symbols=source_symbols,
         source_validation_providers=_parse_csv(

@@ -88,6 +88,17 @@ REQUIRED_SCHEMA_COLUMNS = {
         "source",
         "updated_at",
     },
+    "corporate_action_item": {
+        "action_id",
+        "report_period",
+        "knowledge_date",
+        "ex_date",
+        "cash_div_tax",
+        "action_stage",
+        "action_summary",
+        "source",
+        "updated_at",
+    },
     "screener_result": {
         "trend_score",
         "price_volume_score",
@@ -332,6 +343,7 @@ def _seed_dev_dataset(
                 "price_series_daily",
                 "market_regime_daily",
                 "official_disclosure_item",
+                "corporate_action_item",
                 "screener_run",
                 "screener_result",
                 "backtest_request",
@@ -347,6 +359,7 @@ def _seed_dev_dataset(
                 "price_series_daily": "READY",
                 "market_regime_daily": "READY",
                 "official_disclosure_item": "READY",
+                "corporate_action_item": "READY",
                 "screener_run": "READY",
                 "screener_result": "READY",
                 "backtest_request": "READY",
@@ -371,6 +384,7 @@ def _seed_dev_dataset(
             [
                 "price_series_daily",
                 "official_disclosure_item",
+                "corporate_action_item",
             ],
             ensure_ascii=False,
         ),
@@ -378,6 +392,7 @@ def _seed_dev_dataset(
             {
                 "price_series_daily": "READY",
                 "official_disclosure_item": "READY",
+                "corporate_action_item": "READY",
             },
             ensure_ascii=False,
         ),
@@ -533,6 +548,14 @@ def _seed_dev_dataset(
         latest_updated_at=latest_published_at,
     ):
         seeded_any |= _insert_row(connection, "official_disclosure_item", disclosure_row)
+
+    for corporate_action_row in _build_seed_corporate_action_rows(
+        previous_snapshot_id=previous_snapshot_id,
+        previous_updated_at=previous_published_at,
+        latest_snapshot_id=latest_snapshot_id,
+        latest_updated_at=latest_published_at,
+    ):
+        seeded_any |= _insert_row(connection, "corporate_action_item", corporate_action_row)
 
     return seeded_any
 
@@ -978,6 +1001,77 @@ def _build_seed_official_disclosure_rows(
             "pdf_url": "https://static.cninfo.com.cn/finalpage/2026-03-27/1225039908.PDF",
             "detail_url": "https://www.cninfo.com.cn/new/disclosure/detail?stockCode=688017&announcementId=1225039908&orgId=9900041602&announcementTime=2026-03-27",
             "source": "dev-seed-official-disclosure",
+            "updated_at": latest_updated_at,
+        },
+    ]
+
+
+def _build_seed_corporate_action_rows(
+    *,
+    previous_snapshot_id: str,
+    previous_updated_at: str,
+    latest_snapshot_id: str,
+    latest_updated_at: str,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "symbol": "300750.SZ",
+            "trade_date": "2026-03-26",
+            "snapshot_id": previous_snapshot_id,
+            "action_id": "300750.SZ|2025-12-31|2026-03-20|0.0000|4.5530",
+            "report_period": "2025-12-31",
+            "knowledge_date": "2026-03-20",
+            "ann_date": "2026-03-20",
+            "imp_ann_date": None,
+            "record_date": None,
+            "ex_date": None,
+            "pay_date": None,
+            "div_listdate": None,
+            "stock_div": 0.0,
+            "cash_div_tax": 4.553,
+            "action_stage": "ANNOUNCED",
+            "action_summary": "每10股派现4.553元",
+            "source": "dev-seed-corporate-action",
+            "updated_at": previous_updated_at,
+        },
+        {
+            "symbol": "300750.SZ",
+            "trade_date": "2026-04-01",
+            "snapshot_id": latest_snapshot_id,
+            "action_id": "300750.SZ|2025-12-31|2026-03-20|0.0000|4.5530",
+            "report_period": "2025-12-31",
+            "knowledge_date": "2026-03-29",
+            "ann_date": "2026-03-20",
+            "imp_ann_date": "2026-03-29",
+            "record_date": "2026-03-31",
+            "ex_date": "2026-04-01",
+            "pay_date": "2026-04-01",
+            "div_listdate": None,
+            "stock_div": 0.0,
+            "cash_div_tax": 4.553,
+            "action_stage": "IMPLEMENTED",
+            "action_summary": "每10股派现4.553元 · 除权除息日 2026-04-01",
+            "source": "dev-seed-corporate-action",
+            "updated_at": latest_updated_at,
+        },
+        {
+            "symbol": "002475.SZ",
+            "trade_date": "2026-04-03",
+            "snapshot_id": latest_snapshot_id,
+            "action_id": "002475.SZ|2025-12-31|2026-03-25|0.5000|1.2500",
+            "report_period": "2025-12-31",
+            "knowledge_date": "2026-03-25",
+            "ann_date": "2026-03-25",
+            "imp_ann_date": None,
+            "record_date": None,
+            "ex_date": None,
+            "pay_date": None,
+            "div_listdate": None,
+            "stock_div": 0.5,
+            "cash_div_tax": 1.25,
+            "action_stage": "ANNOUNCED",
+            "action_summary": "每10股派现1.250元 · 每10股送转0.500股",
+            "source": "dev-seed-corporate-action",
             "updated_at": latest_updated_at,
         },
     ]

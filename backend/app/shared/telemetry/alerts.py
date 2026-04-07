@@ -45,3 +45,63 @@ def load_recent_alerts(
             continue
         alerts.append(json.loads(line))
     return alerts
+
+
+def summarize_recent_alerts(
+    settings: AppSettings,
+    *,
+    limit: int = 200,
+) -> dict[str, object]:
+    alerts = load_recent_alerts(settings, limit=limit)
+    severity_counts: dict[str, int] = {}
+    alert_type_counts: dict[str, int] = {}
+    provider_counts: dict[str, dict[str, object]] = {}
+
+    for alert in alerts:
+        severity = str(alert.get("severity") or "unknown")
+        alert_type = str(alert.get("alert_type") or "unknown")
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        alert_type_counts[alert_type] = alert_type_counts.get(alert_type, 0) + 1
+
+        detail = alert.get("detail")
+        if not isinstance(detail, dict):
+            continue
+        provider = detail.get("provider")
+        if provider is None:
+            continue
+        provider_name = str(provider)
+        provider_summary = provider_counts.setdefault(
+            provider_name,
+            {
+                "provider": provider_name,
+                "alert_count": 0,
+                "latest_triggered_at": None,
+                "latest_status": None,
+                "latest_category": None,
+                "latest_message": None,
+            },
+        )
+        provider_summary["alert_count"] = int(provider_summary["alert_count"]) + 1
+        provider_summary["latest_triggered_at"] = alert.get("triggered_at")
+        provider_summary["latest_status"] = detail.get("status")
+        provider_summary["latest_category"] = detail.get("degradation_category")
+        provider_summary["latest_message"] = alert.get("message")
+
+    return {
+        "window_count": len(alerts),
+        "severity_counts": severity_counts,
+        "alert_type_counts": dict(
+            sorted(
+                alert_type_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ),
+        "latest_alert": alerts[-1] if alerts else None,
+        "provider_alerts": sorted(
+            provider_counts.values(),
+            key=lambda item: (
+                -int(item["alert_count"]),
+                str(item["provider"]),
+            ),
+        )[:5],
+    }
