@@ -51,8 +51,28 @@
    - `boundary_gap_count = 0`
    - `nearest_out_of_coverage_event_date = 2025-12-19`
 6. 这次结果把先前 `2026-01-16` 缺口吃进覆盖内，并且没有新增边界缺口；下一次推荐起点应继续回退到 `2025-12-19` 前一个 open day。
+7. 随后继续运行 `QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2025-12-18 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py`，返回：
+   - `history_coverage.open_day_count = 71`
+   - `history_coverage.start_biz_date = 2025-12-18`
+   - `history_coverage.end_biz_date = 2026-04-08`
+   - `corporate_action_check.status = OK`
+   - `checked_action_count = 8`
+   - `aligned_action_count = 7`
+   - `boundary_gap_count = 1`
+   - `nearest_out_of_coverage_event_date = 2025-12-16`
+8. 这次结果说明回补窗口继续有效扩深，但 `000858.SZ` 的一条企业行为正好落在 `2025-12-18` 覆盖边界上；下一跳应把目标起点继续提前到 `2025-12-18` 之前，以便拿到事件前一个价格点。
+9. 2026-04-09 再运行 `QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2025-12-15 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py`，返回：
+   - `history_coverage.open_day_count = 74`
+   - `history_coverage.start_biz_date = 2025-12-15`
+   - `history_coverage.end_biz_date = 2026-04-08`
+   - `corporate_action_check.status = OK`
+   - `checked_action_count = 9`
+   - `aligned_action_count = 9`
+   - `boundary_gap_count = 0`
+   - `nearest_out_of_coverage_event_date = 2025-11-18`
+10. 这次结果清掉了 `2025-12-18` 的边界缺口，也吃进了 `2025-12-16` 附近的企业行为；下一阶段不应继续用超长 isolated live smoke 盲目推进，而应先优化长窗口 rebuild。
 
 ## Next
 
-1. 继续把覆盖从当前 `2026-01-15` 再往 `2025-12-19` 之前推进，扩大 `corporate_action` 的 in-coverage 比例。
+1. 当前 target-date 验证已完成到 `2025-12-15`；下一阶段先优化长窗口 rebuild，再继续往 `2025-11-18` 之前推进。
 2. 开始评估是否要把 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 暴露到正式 live runtime 配置，而不是只在 smoke/运维回补里手工使用。

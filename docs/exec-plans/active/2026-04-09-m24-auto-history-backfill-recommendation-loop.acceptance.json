@@ -29,6 +29,15 @@
         "scripts/smoke.sh"
       ],
       "passes": true
+    },
+    {
+      "id": "dividend-fetch-cached-with-asof-filtering",
+      "title": "Corporate action provider caches raw dividend rows inside a backfill process",
+      "description": "Long-window Tushare backfill should fetch raw dividend rows once per symbol in a provider instance, while continuing to apply biz-date-level as-of filtering for each snapshot.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
     }
   ]
 }

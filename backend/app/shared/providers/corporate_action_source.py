@@ -94,6 +94,7 @@ class TushareCorporateActionProvider:
         self._settings = settings
         self._ts = importlib.import_module("tushare")
         self._pro = self._ts.pro_api(settings.tushare_token)
+        self._dividend_records_by_symbol: dict[str, list[dict[str, object]]] = {}
 
     def fetch_actions(
         self,
@@ -106,17 +107,7 @@ class TushareCorporateActionProvider:
 
         for stock in stock_basic:
             symbol = str(stock["symbol"])
-            records = _frame_records(
-                _call_tushare_dataset(
-                    self._pro,
-                    dataset_name="dividend",
-                    ts_code=_symbol_to_tushare_code(symbol),
-                    fields=(
-                        "ts_code,end_date,ann_date,imp_ann_date,record_date,"
-                        "ex_date,pay_date,div_listdate,stk_div,cash_div_tax"
-                    ),
-                )
-            )
+            records = self._load_dividend_records(symbol)
             normalized_rows = _normalize_tushare_dividend_rows(
                 symbol=symbol,
                 biz_date=biz_date,
@@ -133,6 +124,24 @@ class TushareCorporateActionProvider:
             )
         )
         return tuple(rows)
+
+    def _load_dividend_records(self, symbol: str) -> list[dict[str, object]]:
+        cached_records = self._dividend_records_by_symbol.get(symbol)
+        if cached_records is not None:
+            return cached_records
+        records = _frame_records(
+            _call_tushare_dataset(
+                self._pro,
+                dataset_name="dividend",
+                ts_code=_symbol_to_tushare_code(symbol),
+                fields=(
+                    "ts_code,end_date,ann_date,imp_ann_date,record_date,"
+                    "ex_date,pay_date,div_listdate,stk_div,cash_div_tax"
+                ),
+            )
+        )
+        self._dividend_records_by_symbol[symbol] = records
+        return records
 
 
 def build_corporate_action_provider(

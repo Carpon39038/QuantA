@@ -25,12 +25,14 @@ from backend.app.domains.market_data.sync import (
     resolve_source_backfill_window_to_start_date,
 )
 from backend.app.domains.tasking.scheduler import (
+    enqueue_next_pipeline_task,
     _history_backfill_target_open_days,
     _resolve_history_backfill_target_start_biz_date,
 )
 
 
 OPEN_DATES = ("20260331", "20260401", "20260402")
+FAKE_TUSHARE_CLIENTS: list["FakeTusharePro"] = []
 
 
 class FakeFrame:
@@ -48,6 +50,9 @@ class FakeFrame:
 
 
 class FakeTusharePro:
+    def __init__(self) -> None:
+        self.dividend_call_count = 0
+
     def trade_cal(self, **kwargs) -> FakeFrame:
         start_date = str(kwargs.get("start_date"))
         end_date = str(kwargs.get("end_date"))
@@ -247,6 +252,7 @@ class FakeTusharePro:
         )
 
     def dividend(self, **kwargs) -> FakeFrame:
+        self.dividend_call_count += 1
         ts_code = str(kwargs.get("ts_code"))
         if ts_code == "300750.SZ":
             return FakeFrame(
@@ -461,6 +467,7 @@ def main() -> int:
             assert rerun_summary["snapshot_count"] == 0
             assert rerun_summary["synced_biz_dates"] == []
             assert rerun_summary["skipped_existing_biz_dates"] == summary["open_biz_dates"]
+            assert sum(client.dividend_call_count for client in FAKE_TUSHARE_CLIENTS) == 2
 
             connection = duckdb.connect(str(settings.duckdb_path), read_only=True)
             try:
@@ -567,6 +574,57 @@ def main() -> int:
                 == 7
             )
 
+            with (
+                patch(
+                    "backend.app.domains.tasking.scheduler._has_open_service_queue_items",
+                    return_value=False,
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler.load_latest_building_snapshot",
+                    return_value=None,
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler.latest_source_biz_date",
+                    return_value="2026-04-02",
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler._load_latest_ready_snapshot_meta",
+                    return_value=latest_ready_snapshot,
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler.load_system_health",
+                    return_value={
+                        "history_coverage": {
+                            "recommended_target_start_biz_date": "2026-03-31",
+                        }
+                    },
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler._load_snapshot_history_coverage",
+                    return_value={
+                        "start_biz_date": "2026-04-01",
+                        "end_biz_date": "2026-04-02",
+                        "open_day_count": 2,
+                    },
+                ),
+                patch(
+                    "backend.app.domains.tasking.scheduler.enqueue_service_task",
+                    return_value={
+                        "task_name": "history_backfill",
+                        "target_start_biz_date": "2026-03-31",
+                        "lookback_open_days": None,
+                    },
+                ) as enqueue_mock,
+            ):
+                pipeline_action = enqueue_next_pipeline_task(settings)
+            assert pipeline_action["enqueued"]["task_name"] == "history_backfill"
+            assert (
+                pipeline_action["enqueued"]["target_start_biz_date"] == "2026-03-31"
+            )
+            assert pipeline_action["enqueued"]["lookback_open_days"] is None
+            assert enqueue_mock.call_args.kwargs["target_start_biz_date"] == "2026-03-31"
+            assert enqueue_mock.call_args.kwargs["lookback_open_days"] is None
+
         print("[market-data-backfill-smoke] backfill path is healthy")
         return 0
     finally:
@@ -584,7 +642,9 @@ def main() -> int:
 def _build_fake_client(token: str) -> FakeTusharePro:
     if token != "demo-token":
         raise AssertionError(f"unexpected token: {token}")
-    return FakeTusharePro()
+    client = FakeTusharePro()
+    FAKE_TUSHARE_CLIENTS.append(client)
+    return client
 
 
 def _env_keys() -> tuple[str, ...]:
