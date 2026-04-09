@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import sys
 import time
 
 from backend.app.app_wiring.settings import AppSettings, load_settings
@@ -152,6 +154,9 @@ def run_scheduler_loop(
     auto_pipeline: bool,
     iterations: int | None,
     stream_ticks: bool = False,
+    stream_log_path: Path | None = None,
+    stream_log_max_bytes: int = 10_485_760,
+    stream_log_backups: int = 5,
     continue_on_error: bool = False,
 ) -> dict[str, object]:
     summaries: list[dict[str, object]] = []
@@ -180,12 +185,15 @@ def run_scheduler_loop(
         if iterations is not None:
             summaries.append(tick_summary)
         if stream_ticks:
-            _print_stream_event(
+            _emit_stream_event(
                 {
                     "event": "scheduler_tick",
                     "tick_no": loop_count,
                     **tick_summary,
-                }
+                },
+                log_path=stream_log_path,
+                log_max_bytes=stream_log_max_bytes,
+                log_backups=stream_log_backups,
             )
         if iterations is None:
             time.sleep(settings.scheduler_poll_interval_seconds)
@@ -214,8 +222,88 @@ def _build_scheduler_loop_error_tick(exc: Exception) -> dict[str, object]:
     }
 
 
-def _print_stream_event(event: dict[str, object]) -> None:
-    print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
+def _emit_stream_event(
+    event: dict[str, object],
+    *,
+    log_path: Path | None = None,
+    log_max_bytes: int = 10_485_760,
+    log_backups: int = 5,
+) -> None:
+    serialized = json.dumps(event, ensure_ascii=False, sort_keys=True)
+    print(serialized, flush=True)
+    if log_path is None:
+        return
+    try:
+        _append_stream_log_line(
+            log_path,
+            serialized,
+            log_max_bytes=log_max_bytes,
+            log_backups=log_backups,
+        )
+    except OSError as exc:
+        print(
+            json.dumps(
+                {
+                    "event": "scheduler_stream_log_error",
+                    "error": {
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                    },
+                    "log_path": str(log_path),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def _append_stream_log_line(
+    log_path: Path,
+    serialized_event: str,
+    *,
+    log_max_bytes: int,
+    log_backups: int,
+) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    line = f"{serialized_event}\n"
+    _rotate_stream_log_if_needed(
+        log_path,
+        incoming_bytes=len(line.encode("utf-8")),
+        log_max_bytes=log_max_bytes,
+        log_backups=log_backups,
+    )
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(line)
+
+
+def _rotate_stream_log_if_needed(
+    log_path: Path,
+    *,
+    incoming_bytes: int,
+    log_max_bytes: int,
+    log_backups: int,
+) -> None:
+    if log_max_bytes <= 0 or log_backups <= 0 or not log_path.exists():
+        return
+    if log_path.stat().st_size + incoming_bytes <= log_max_bytes:
+        return
+
+    oldest_backup = _rotated_stream_log_path(log_path, log_backups)
+    if oldest_backup.exists():
+        oldest_backup.unlink()
+
+    for backup_no in range(log_backups - 1, 0, -1):
+        source = _rotated_stream_log_path(log_path, backup_no)
+        if source.exists():
+            source.rename(_rotated_stream_log_path(log_path, backup_no + 1))
+
+    log_path.rename(_rotated_stream_log_path(log_path, 1))
+
+
+def _rotated_stream_log_path(log_path: Path, backup_no: int) -> Path:
+    return log_path.with_name(f"{log_path.name}.{backup_no}")
 
 
 def is_pipeline_settled(settings: AppSettings) -> bool:
@@ -455,6 +543,22 @@ def main() -> int:
         help="For --daemon, print each scheduler tick as a single JSONL event.",
     )
     parser.add_argument(
+        "--stream-log-path",
+        help="For --daemon, append scheduler JSONL stream events to this file.",
+    )
+    parser.add_argument(
+        "--stream-log-max-bytes",
+        type=int,
+        default=10_485_760,
+        help="Rotate --stream-log-path after this many bytes. Use 0 to disable rotation.",
+    )
+    parser.add_argument(
+        "--stream-log-backups",
+        type=int,
+        default=5,
+        help="Number of rotated --stream-log-path backups to keep.",
+    )
+    parser.add_argument(
         "--stop-on-error",
         action="store_true",
         help="For --daemon, exit on tick-level errors instead of alerting and polling again.",
@@ -463,6 +567,12 @@ def main() -> int:
 
     settings = load_settings()
     stream_ticks = bool(args.stream_ticks or (args.daemon and args.iterations is None))
+    stream_log_path = _resolve_stream_log_path(
+        settings,
+        raw_stream_log_path=args.stream_log_path,
+        stream_ticks=stream_ticks,
+        is_daemon=args.daemon,
+    )
     if args.enqueue_only:
         summary = enqueue_next_pipeline_task(settings)
     elif args.daemon:
@@ -471,21 +581,41 @@ def main() -> int:
             auto_pipeline=args.auto_pipeline,
             iterations=args.iterations,
             stream_ticks=stream_ticks,
+            stream_log_path=stream_log_path,
+            stream_log_max_bytes=args.stream_log_max_bytes,
+            stream_log_backups=args.stream_log_backups,
             continue_on_error=not args.stop_on_error,
         )
     else:
         summary = run_daily_pipeline(settings, max_ticks=args.max_ticks)
 
     if args.daemon and stream_ticks:
-        _print_stream_event(
+        _emit_stream_event(
             {
                 "event": "scheduler_loop_finished",
                 **summary,
-            }
+            },
+            log_path=stream_log_path,
+            log_max_bytes=args.stream_log_max_bytes,
+            log_backups=args.stream_log_backups,
         )
     else:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
+
+
+def _resolve_stream_log_path(
+    settings: AppSettings,
+    *,
+    raw_stream_log_path: str | None,
+    stream_ticks: bool,
+    is_daemon: bool,
+) -> Path | None:
+    if raw_stream_log_path:
+        return Path(raw_stream_log_path)
+    if is_daemon and stream_ticks:
+        return settings.logs_dir / "pipeline-daemon.jsonl"
+    return None
 
 
 if __name__ == "__main__":

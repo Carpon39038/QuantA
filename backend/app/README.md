@@ -22,19 +22,21 @@
 5. `python3 -m backend.app.domains.tasking.scheduler --max-ticks 6`
 6. `pnpm run pipeline:once`
 7. `pnpm run pipeline:daemon`
-8. `python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --iterations 3 --stream-ticks --stop-on-error`
-7. `python3 -m backend.app.domains.market_data.bootstrap --print-summary`
-8. `python3 -m backend.app.domains.market_data.sync --print-summary`
-9. `python3 -m backend.app.domains.market_data.sync --lookback-open-days 20 --print-summary`
-10. `python3 -m backend.app.domains.market_data.sync --target-start-biz-date 2026-01-29 --print-summary`
-11. `python3 -m backend.app.domains.analysis.bootstrap --print-summary`
-12. `python3 -m backend.app.domains.screener.bootstrap --print-summary`
-13. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
-14. `python3 scripts/tushare_provider_smoke.py`
-15. `python3 scripts/tushare_live_smoke.py`
-16. `python3 scripts/tushare_live_sync_smoke.py`
-17. `python3 scripts/market_data_backfill_smoke.py`
-18. `python3 scripts/tushare_live_backfill_smoke.py`
+8. `pnpm run ops:doctor`
+9. `pnpm run ops:after-close`
+10. `python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --iterations 3 --stream-ticks --stop-on-error`
+11. `python3 -m backend.app.domains.market_data.bootstrap --print-summary`
+12. `python3 -m backend.app.domains.market_data.sync --print-summary`
+13. `python3 -m backend.app.domains.market_data.sync --lookback-open-days 20 --print-summary`
+14. `python3 -m backend.app.domains.market_data.sync --target-start-biz-date 2026-01-29 --print-summary`
+15. `python3 -m backend.app.domains.analysis.bootstrap --print-summary`
+16. `python3 -m backend.app.domains.screener.bootstrap --print-summary`
+17. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
+18. `python3 scripts/tushare_provider_smoke.py`
+19. `python3 scripts/tushare_live_smoke.py`
+20. `python3 scripts/tushare_live_sync_smoke.py`
+21. `python3 scripts/market_data_backfill_smoke.py`
+22. `python3 scripts/tushare_live_backfill_smoke.py`
 
 当前行为已升级为 `source-backed DuckDB dev foundation`：
 
@@ -49,6 +51,7 @@
 9. 已提供最小 `domains.tasking.scheduler` resident loop，可轮询 auto pipeline，并通过 `scripts/pipeline_smoke.py` 覆盖成功路径与 retry 路径。
 9.1. 正式的本机常驻入口是 `pnpm run pipeline:daemon`：它会在一个进程里执行 scheduler tick、service queue worker 和 backtest queue worker，并把每个 resident tick 输出成 JSONL。操作口径见 `docs/OPERATIONS.md`。
 9.2. `pnpm run pipeline:canary` 会使用隔离 runtime 演练 resident scheduler；2026-04-09 已用 Tushare live token 在 `core_research_12` 上跑通 canary，daemon 自动 catch-up 到 `2026-04-09`，health 为 `ok`，alerts 为 `0`。
+9.3. `pipeline:daemon` 的 JSONL tick 会同步落盘到 `data/logs/pipeline-daemon.jsonl` 并按大小轮转；`ops/launchd/` 提供本机 launchd 模板，`pnpm run ops:after-close` 提供盘后巡检聚合。
 10. 当前正式数据源口径已经收敛为 `Tushare Pro 5000积分档 + 巨潮资讯/上交所/深交所 + AKShare/BaoStock补充层`。
 11. `Tushare Pro 5000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
 12. 全市场季度财务过滤现在回到 v1.0 默认前提，可以直接进入正式选股主链，而不必先降级成“候选池后拉取”。

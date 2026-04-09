@@ -44,6 +44,8 @@ QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS=5 pnpm run pipeline:daemon
 6. `settled`
    `true` 表示当前 source、queue、BUILDING snapshot 和历史覆盖目标已经暂时追平。
 
+同一份 JSONL tick 也会追加到 runtime 的 `logs/pipeline-daemon.jsonl`；默认本机路径是 `data/logs/pipeline-daemon.jsonl`。该文件按 10 MiB 触发本地轮转，保留 5 份 `pipeline-daemon.jsonl.N` 备份。
+
 ## Live Runtime Start
 
 第一版 live 运行至少需要显式设置 canonical source 和 token：
@@ -59,6 +61,18 @@ pnpm run backend:dev
 pnpm run frontend:dev
 pnpm run pipeline:daemon
 ```
+
+如果准备用 macOS launchd 守护进程，先准备本机 env 文件：
+
+```bash
+mkdir -p data/env data/logs
+cp ops/live.env.example data/env/live.env
+chmod 600 data/env/live.env
+```
+
+然后编辑 `data/env/live.env` 写入真实 token。本仓库只提供 `ops/live.env.example`，不要把真实 `data/env/live.env` 提交。
+
+launchd 模板位于 `ops/launchd/`；三个服务分别是 `com.quanta.pipeline`、`com.quanta.backend` 和 `com.quanta.frontend`。模板统一调用 `bash scripts/ops_entrypoint.sh <service>`，入口脚本会加载 `data/env/live.env`，并在 pipeline 启动前执行最小 schema bootstrap。
 
 正式 runtime 前，建议先跑一次隔离 canary：
 
@@ -91,6 +105,7 @@ QUANTA_PIPELINE_CANARY_KEEP_RUNTIME=1 pnpm run pipeline:canary
 
 ```bash
 pnpm run ops:doctor
+pnpm run ops:after-close
 curl -s http://127.0.0.1:8765/api/v1/system/health
 curl -s http://127.0.0.1:8765/api/v1/system/alerts
 curl -s http://127.0.0.1:8765/api/v1/runtime
@@ -101,6 +116,18 @@ curl -s http://127.0.0.1:8765/api/v1/runtime
 ```bash
 python3 scripts/ops_doctor.py --live-source
 ```
+
+如果 backend 和 pipeline daemon 已经常驻，并且想把 warning 也收紧成硬失败：
+
+```bash
+python3 scripts/after_close_check.py \
+  --live-source \
+  --require-http \
+  --require-fresh-pipeline-log \
+  --fail-on-alert
+```
+
+`after_close_check.py` 会汇总 `ops_doctor`、backend `/health`、`data/logs/pipeline-daemon.jsonl` 最后一条事件和日志年龄。
 
 盘后运行的最低验收：
 

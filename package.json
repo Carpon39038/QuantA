@@ -9,6 +9,7 @@
     "pipeline:daemon": "python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --stream-ticks",
     "pipeline:canary": "python3 scripts/pipeline_daemon_canary.py",
     "ops:doctor": "python3 scripts/ops_doctor.py",
+    "ops:after-close": "python3 scripts/after_close_check.py --live-source",
     "smoke": "scripts/smoke.sh",
     "app:smoke": "python3 scripts/app_smoke.py"
   }

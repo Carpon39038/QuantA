@@ -135,6 +135,8 @@ def verify_resident_scheduler_stream_case() -> None:
                 "--iterations",
                 "3",
                 "--stream-ticks",
+                "--stream-log-path",
+                str(runtime_dir / "logs" / "pipeline-daemon.jsonl"),
                 "--stop-on-error",
             ],
             env,
@@ -156,6 +158,13 @@ def verify_resident_scheduler_stream_case() -> None:
             for event in stream_events
             if event["event"] == "scheduler_tick"
         )
+        log_events = [
+            json.loads(line)
+            for line in (runtime_dir / "logs" / "pipeline-daemon.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        assert log_events == stream_events
 
 
 def main() -> int:

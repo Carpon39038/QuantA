@@ -33,20 +33,26 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    summary = build_summary(live_source=args.live_source, fail_on_alert=args.fail_on_alert)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return exit_code_for_summary(summary)
+
+
+def build_summary(*, live_source: bool = False, fail_on_alert: bool = False) -> dict[str, object]:
     settings = load_settings()
     health = load_system_health(settings)
     alerts = load_recent_alerts(settings, limit=50)
     queue_files = _queue_file_summary(settings.queue_dir)
-    source_latest_biz_date = latest_source_biz_date(settings) if args.live_source else None
+    source_latest_biz_date = latest_source_biz_date(settings) if live_source else None
     findings = _build_findings(
         health=health,
         alerts=alerts,
         queue_files=queue_files,
         source_latest_biz_date=source_latest_biz_date,
-        fail_on_alert=args.fail_on_alert,
+        fail_on_alert=fail_on_alert,
     )
     status = _overall_status(findings)
-    summary = {
+    return {
         "status": status,
         "duckdb_path": str(settings.duckdb_path),
         "alerts_path": str(settings.alerts_path),
@@ -60,7 +66,10 @@ def main() -> int:
         "queue_files": queue_files,
         "findings": findings,
     }
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def exit_code_for_summary(summary: dict[str, object]) -> int:
+    status = str(summary.get("status"))
     return 0 if status in {"pass", "warn"} else 1
 
 
