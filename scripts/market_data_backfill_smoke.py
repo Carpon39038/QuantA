@@ -509,6 +509,98 @@ def main() -> int:
                 == "OK"
             )
 
+        with tempfile.TemporaryDirectory(prefix="quanta-backfill-latest-smoke-") as temp_dir:
+            os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir
+            os.environ["QUANTA_DUCKDB_PATH"] = str(Path(temp_dir) / "duckdb" / "quanta.duckdb")
+            os.environ["QUANTA_SOURCE_PROVIDER"] = "tushare"
+            os.environ["QUANTA_SOURCE_UNIVERSE"] = "core_research_12"
+            os.environ["QUANTA_DISCLOSURE_PROVIDER"] = "none"
+            os.environ["QUANTA_SOURCE_VALIDATION_PROVIDERS"] = "none"
+            os.environ["QUANTA_TUSHARE_TOKEN"] = "demo-token"
+            os.environ["QUANTA_TUSHARE_EXCHANGE"] = "SSE"
+            os.environ["QUANTA_SOURCE_SYMBOLS"] = "300750.SZ,002475.SZ"
+
+            settings = load_settings()
+            target_window = resolve_source_backfill_window(
+                settings,
+                lookback_open_days=3,
+                end_biz_date="2026-04-02",
+            )
+            latest_summary = backfill_market_data(
+                settings,
+                start_biz_date=str(target_window["start_biz_date"]),
+                end_biz_date=str(target_window["end_biz_date"]),
+                artifact_mode="latest",
+            )
+            assert latest_summary["artifact_mode"] == "latest"
+            assert latest_summary["source_only_biz_dates"] == [
+                "2026-03-31",
+                "2026-04-01",
+            ]
+            assert latest_summary["artifact_biz_dates"] == ["2026-04-02"]
+            assert latest_summary["source_only_raw_snapshot_count"] == 2
+            assert latest_summary["snapshot_count"] == 1
+
+            latest_rerun_summary = backfill_market_data(
+                settings,
+                start_biz_date=str(target_window["start_biz_date"]),
+                end_biz_date=str(target_window["end_biz_date"]),
+                artifact_mode="latest",
+            )
+            assert latest_rerun_summary["snapshot_count"] == 0
+            assert latest_rerun_summary["synced_biz_dates"] == []
+            assert latest_rerun_summary["skipped_existing_biz_dates"] == [
+                "2026-03-31",
+                "2026-04-01",
+                "2026-04-02",
+            ]
+
+            connection = duckdb.connect(str(settings.duckdb_path), read_only=True)
+            try:
+                raw_snapshot_count = int(
+                    connection.execute("SELECT COUNT(*) FROM raw_snapshot").fetchone()[0]
+                )
+                artifact_publish_count = int(
+                    connection.execute("SELECT COUNT(*) FROM artifact_publish").fetchone()[0]
+                )
+                latest_snapshot_id = connection.execute(
+                    """
+                    SELECT snapshot_id
+                    FROM artifact_publish
+                    ORDER BY publish_seq DESC
+                    LIMIT 1
+                    """
+                ).fetchone()[0]
+                price_history_coverage = connection.execute(
+                    """
+                    SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT trade_date)
+                    FROM price_series_daily
+                    WHERE snapshot_id = ?
+                      AND price_basis = 'raw'
+                    """,
+                    [latest_snapshot_id],
+                ).fetchone()
+                source_only_watermark_json = connection.execute(
+                    """
+                    SELECT source_watermark_json
+                    FROM raw_snapshot
+                    WHERE biz_date = CAST('2026-04-01' AS DATE)
+                    ORDER BY snapshot_seq DESC
+                    LIMIT 1
+                    """
+                ).fetchone()[0]
+            finally:
+                connection.close()
+
+            source_only_watermark = json.loads(source_only_watermark_json)
+            assert raw_snapshot_count == 5
+            assert artifact_publish_count == 3
+            assert source_only_watermark["artifact_mode"] == "source_only"
+            assert source_only_watermark["shadow_validation"]["status"] == "SKIPPED"
+            assert str(price_history_coverage[0]) <= "2026-03-31"
+            assert str(price_history_coverage[1]) == "2026-04-02"
+            assert int(price_history_coverage[2]) >= 3
+
         with tempfile.TemporaryDirectory(prefix="quanta-backfill-auto-smoke-") as temp_dir:
             os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir
             os.environ["QUANTA_DUCKDB_PATH"] = str(Path(temp_dir) / "duckdb" / "quanta.duckdb")

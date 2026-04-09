@@ -104,6 +104,7 @@ def run_history_backfill(
         settings,
         start_biz_date=str(start_biz_date),
         end_biz_date=str(end_biz_date),
+        artifact_mode="latest",
     )
 
     completed_snapshots: list[dict[str, object]] = []

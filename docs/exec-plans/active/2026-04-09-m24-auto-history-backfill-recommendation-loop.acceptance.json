@@ -38,6 +38,18 @@
         "python3 scripts/market_data_backfill_smoke.py"
       ],
       "passes": true
+    },
+    {
+      "id": "latest-artifact-backfill-mode",
+      "title": "Long-window history backfill can ingest raw facts incrementally and publish one terminal artifact",
+      "description": "Backfill supports an artifact_mode=latest path; service history_backfill uses it, source-only intermediates are recorded in source_watermark_json, reruns no-op when the terminal artifact already covers the requested start, and app smoke still passes on qfq fixture data.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/market_data/sync.py backend/app/domains/tasking/service_runner.py scripts/market_data_backfill_smoke.py scripts/tushare_live_backfill_smoke.py",
+        "python3 scripts/market_data_backfill_smoke.py",
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 scripts/app_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
     }
   ]
 }

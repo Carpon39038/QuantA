@@ -75,6 +75,8 @@ def main() -> int:
                     if target_start_biz_date
                     else ["--lookback-open-days", str(lookback_open_days)]
                 ),
+                "--artifact-mode",
+                "latest",
                 "--print-summary",
             ],
             cwd=ROOT,
@@ -95,6 +97,8 @@ def main() -> int:
                         if target_start_biz_date
                         else ["--lookback-open-days", str(lookback_open_days)]
                     ),
+                    "--artifact-mode",
+                    "latest",
                     "--print-summary",
                 ],
                 cwd=ROOT,

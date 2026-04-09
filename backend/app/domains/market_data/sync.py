@@ -55,7 +55,11 @@ def backfill_market_data(
     *,
     start_biz_date: str,
     end_biz_date: str,
+    artifact_mode: str = "all",
 ) -> dict[str, object]:
+    if artifact_mode not in {"all", "latest"}:
+        raise ValueError("artifact_mode must be either 'all' or 'latest'")
+
     ensure_runtime_directories(settings)
     ensure_dev_duckdb(settings)
 
@@ -77,30 +81,100 @@ def backfill_market_data(
         start_biz_date=start_biz_date,
         end_biz_date=end_biz_date,
     )
+    existing_artifact_biz_dates = _existing_artifact_publish_biz_dates(
+        settings,
+        start_biz_date=start_biz_date,
+        end_biz_date=end_biz_date,
+    )
+    target_artifact_has_requested_coverage = (
+        artifact_mode == "latest"
+        and _latest_artifact_price_series_covers_start_date(
+            settings,
+            artifact_biz_date=open_biz_dates[-1],
+            target_start_biz_date=open_biz_dates[0],
+        )
+    )
     synced_summaries: list[dict[str, object]] = []
+    artifact_summaries: list[dict[str, object]] = []
+    source_only_summaries: list[dict[str, object]] = []
     skipped_existing_biz_dates: list[str] = []
-    for biz_date in open_biz_dates:
+
+    if artifact_mode == "all":
+        artifact_target_biz_dates = set(open_biz_dates)
+        source_only_target_biz_dates: list[str] = []
+    else:
+        artifact_target_biz_dates = {open_biz_dates[-1]}
+        source_only_target_biz_dates = open_biz_dates[:-1]
+
+    for biz_date in source_only_target_biz_dates:
         if biz_date in existing_biz_dates:
             skipped_existing_biz_dates.append(biz_date)
             continue
-        synced_summaries.append(
-            _sync_market_data_with_provider(
-                settings,
-                provider=provider,
-                disclosure_provider=disclosure_provider,
-                corporate_action_provider=corporate_action_provider,
-                biz_date=biz_date,
-            )
+        summary = _sync_market_data_with_provider(
+            settings,
+            provider=provider,
+            disclosure_provider=disclosure_provider,
+            corporate_action_provider=corporate_action_provider,
+            biz_date=biz_date,
+            artifact_mode="source_only",
         )
+        synced_summaries.append(summary)
+        source_only_summaries.append(summary)
+
+    for biz_date in open_biz_dates:
+        if biz_date not in artifact_target_biz_dates:
+            continue
+
+        target_is_incremental_rebuild = (
+            artifact_mode == "latest"
+            and biz_date == open_biz_dates[-1]
+            and not target_artifact_has_requested_coverage
+        )
+        if (
+            biz_date in existing_biz_dates
+            and biz_date in existing_artifact_biz_dates
+            and not target_is_incremental_rebuild
+        ):
+            skipped_existing_biz_dates.append(biz_date)
+            continue
+
+        summary = _sync_market_data_with_provider(
+            settings,
+            provider=provider,
+            disclosure_provider=disclosure_provider,
+            corporate_action_provider=corporate_action_provider,
+            biz_date=biz_date,
+            artifact_mode="full",
+        )
+        synced_summaries.append(summary)
+        artifact_summaries.append(summary)
 
     return {
         "provider": settings.source_provider,
+        "artifact_mode": artifact_mode,
         "start_biz_date": start_biz_date,
         "end_biz_date": end_biz_date,
         "open_biz_dates": open_biz_dates,
         "synced_biz_dates": [summary["biz_date"] for summary in synced_summaries],
+        "source_only_biz_dates": [
+            summary["biz_date"] for summary in source_only_summaries
+        ],
+        "artifact_biz_dates": [summary["biz_date"] for summary in artifact_summaries],
         "skipped_existing_biz_dates": skipped_existing_biz_dates,
-        "snapshot_count": len(synced_summaries),
+        "raw_snapshot_count": len(synced_summaries),
+        "source_only_raw_snapshot_count": len(source_only_summaries),
+        "snapshot_count": len(artifact_summaries),
+        "artifact_snapshot_count": len(artifact_summaries),
+        "raw_snapshots": [
+            {
+                "biz_date": summary["biz_date"],
+                "raw_snapshot_id": summary["raw_snapshot_id"],
+                "snapshot_id": summary.get("snapshot_id"),
+                "status": summary["status"],
+                "artifact_mode": summary["artifact_mode"],
+            }
+            for summary in synced_summaries
+        ],
         "snapshots": [
             {
                 "biz_date": summary["biz_date"],
@@ -108,7 +182,7 @@ def backfill_market_data(
                 "raw_snapshot_id": summary["raw_snapshot_id"],
                 "status": summary["status"],
             }
-            for summary in synced_summaries
+            for summary in artifact_summaries
         ],
     }
 
@@ -120,55 +194,69 @@ def _sync_market_data_with_provider(
     disclosure_provider: OfficialDisclosureProvider,
     corporate_action_provider: CorporateActionProvider,
     biz_date: str | None = None,
+    artifact_mode: str = "full",
 ) -> dict[str, object]:
+    if artifact_mode not in {"full", "source_only"}:
+        raise ValueError("artifact_mode must be either 'full' or 'source_only'")
+    build_artifacts = artifact_mode == "full"
+
     _consume_simulated_source_failure(settings, biz_date=biz_date)
     source_snapshot = provider.fetch_daily_snapshot(biz_date=biz_date)
-    shadow_validation = build_shadow_validation_summary(
-        settings,
-        canonical_snapshot=source_snapshot,
-    )
-    source_watermark = {
-        **source_snapshot.source_watermark,
-        "shadow_validation": shadow_validation,
-    }
-    market_overview = dict(source_snapshot.market_overview)
-    market_highlights = list(market_overview.get("highlights", []))
-    market_highlights.append(
-        "shadow_validation_status: " + str(shadow_validation.get("status", "unknown"))
-    )
-    market_highlights.append(
-        "shadow_validation_degradation_status: "
-        + str(shadow_validation.get("degradation_status", "unknown"))
-    )
-    if shadow_validation.get("status") == "OK":
-        market_highlights.append("shadow_validation_ok")
-    elif shadow_validation.get("status") == "WARN":
-        market_highlights.append("shadow_validation_warn")
-    if shadow_validation.get("degradation_status") == "DEGRADED":
-        market_highlights.append("shadow_validation_degraded")
-    if shadow_validation.get("canonical_check_status") == "WARN":
-        market_highlights.append("canonical_quality_warn")
-    market_overview["highlights"] = market_highlights
-    disclosure_items = disclosure_provider.fetch_disclosures(
-        biz_date=source_snapshot.biz_date,
-        stock_basic=source_snapshot.stock_basic,
-    )
-    corporate_action_items = corporate_action_provider.fetch_actions(
-        biz_date=source_snapshot.biz_date,
-        stock_basic=source_snapshot.stock_basic,
-    )
     if not source_snapshot.daily_bars:
         raise RuntimeError(
             f"Source provider {source_snapshot.provider} returned an empty daily snapshot "
             f"for biz_date={source_snapshot.biz_date}"
         )
 
+    if build_artifacts:
+        shadow_validation = build_shadow_validation_summary(
+            settings,
+            canonical_snapshot=source_snapshot,
+        )
+    else:
+        shadow_validation = _source_only_shadow_validation_summary()
+    source_watermark = {
+        **source_snapshot.source_watermark,
+        "artifact_mode": artifact_mode,
+        "shadow_validation": shadow_validation,
+    }
+
+    if build_artifacts:
+        market_overview = dict(source_snapshot.market_overview)
+        market_highlights = list(market_overview.get("highlights", []))
+        market_highlights.append(
+            "shadow_validation_status: " + str(shadow_validation.get("status", "unknown"))
+        )
+        market_highlights.append(
+            "shadow_validation_degradation_status: "
+            + str(shadow_validation.get("degradation_status", "unknown"))
+        )
+        if shadow_validation.get("status") == "OK":
+            market_highlights.append("shadow_validation_ok")
+        elif shadow_validation.get("status") == "WARN":
+            market_highlights.append("shadow_validation_warn")
+        if shadow_validation.get("degradation_status") == "DEGRADED":
+            market_highlights.append("shadow_validation_degraded")
+        if shadow_validation.get("canonical_check_status") == "WARN":
+            market_highlights.append("canonical_quality_warn")
+        market_overview["highlights"] = market_highlights
+        disclosure_items = disclosure_provider.fetch_disclosures(
+            biz_date=source_snapshot.biz_date,
+            stock_basic=source_snapshot.stock_basic,
+        )
+        corporate_action_items = corporate_action_provider.fetch_actions(
+            biz_date=source_snapshot.biz_date,
+            stock_basic=source_snapshot.stock_basic,
+        )
+    else:
+        market_overview = {}
+        disclosure_items = []
+        corporate_action_items = []
+
     connection = connect_duckdb(settings.duckdb_path)
     try:
-        publish_seq = _next_publish_seq(connection)
         snapshot_seq = _next_snapshot_seq(connection)
         raw_snapshot_id = f"raw_snapshot_{source_snapshot.biz_date}_close_{snapshot_seq:03d}"
-        snapshot_id = f"snapshot_{source_snapshot.biz_date}_ready_{publish_seq:03d}"
         published_at = source_snapshot.fetched_at
 
         _upsert_stock_basic_rows(
@@ -231,6 +319,35 @@ def _sync_market_data_with_provider(
             updated_at=published_at,
             source=source_snapshot.source,
         )
+
+        if not build_artifacts:
+            return {
+                "provider": source_snapshot.provider,
+                "source": source_snapshot.source,
+                "biz_date": source_snapshot.biz_date,
+                "snapshot_id": None,
+                "raw_snapshot_id": raw_snapshot_id,
+                "published_at": published_at,
+                "status": "RAW_READY",
+                "artifact_mode": artifact_mode,
+                "inserted": {
+                    "stock_basic": len(source_snapshot.stock_basic),
+                    "trade_calendar": 1,
+                    "daily_bar": len(source_snapshot.daily_bars),
+                    "price_series_daily": 0,
+                    "market_regime_daily": 0,
+                    "official_disclosure_item": 0,
+                    "corporate_action_item": 0,
+                    "indicator_daily": 0,
+                    "pattern_signal_daily": 0,
+                    "capital_feature_daily": 0,
+                    "fundamental_feature_daily": 0,
+                },
+                "shadow_validation": shadow_validation,
+            }
+
+        publish_seq = _next_publish_seq(connection)
+        snapshot_id = f"snapshot_{source_snapshot.biz_date}_ready_{publish_seq:03d}"
 
         connection.execute(
             """
@@ -388,6 +505,7 @@ def _sync_market_data_with_provider(
         "raw_snapshot_id": raw_snapshot_id,
         "published_at": published_at,
         "status": "BUILDING",
+        "artifact_mode": artifact_mode,
         "inserted": {
             "stock_basic": len(source_snapshot.stock_basic),
             "trade_calendar": 1,
@@ -641,6 +759,25 @@ def _next_publish_seq(connection) -> int:
     return int(row[0]) + 1
 
 
+def _source_only_shadow_validation_summary() -> dict[str, object]:
+    return {
+        "status": "SKIPPED",
+        "degradation_status": "SKIPPED",
+        "canonical_check_status": "SKIPPED",
+        "providers": [],
+        "degraded_providers": [],
+        "canonical_checks": {
+            "source_only_ingest": {
+                "status": "SKIPPED",
+                "message": (
+                    "source-only backfill ingests raw daily facts and defers "
+                    "shadow validation to the batch artifact snapshot"
+                ),
+            },
+        },
+    }
+
+
 def _existing_raw_snapshot_biz_dates(
     settings: AppSettings,
     *,
@@ -658,6 +795,64 @@ def _existing_raw_snapshot_biz_dates(
             [start_biz_date, end_biz_date],
         ).fetchall()
         return {str(row[0]) for row in rows}
+    finally:
+        connection.close()
+
+
+def _existing_artifact_publish_biz_dates(
+    settings: AppSettings,
+    *,
+    start_biz_date: str,
+    end_biz_date: str,
+) -> set[str]:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        rows = connection.execute(
+            """
+            SELECT DISTINCT CAST(biz_date AS VARCHAR)
+            FROM artifact_publish
+            WHERE biz_date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+            """,
+            [start_biz_date, end_biz_date],
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+    finally:
+        connection.close()
+
+
+def _latest_artifact_price_series_covers_start_date(
+    settings: AppSettings,
+    *,
+    artifact_biz_date: str,
+    target_start_biz_date: str,
+) -> bool:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        row = connection.execute(
+            """
+            WITH latest_artifact AS (
+              SELECT snapshot_id
+              FROM artifact_publish
+              WHERE biz_date = CAST(? AS DATE)
+              ORDER BY publish_seq DESC
+              LIMIT 1
+            )
+            SELECT MIN(ps.trade_date), MAX(ps.trade_date)
+            FROM latest_artifact la
+            JOIN price_series_daily ps
+              ON ps.snapshot_id = la.snapshot_id
+            """,
+            [artifact_biz_date],
+        ).fetchone()
+        if row is None:
+            return False
+        min_trade_date, max_trade_date = row
+        if min_trade_date is None or max_trade_date is None:
+            return False
+        return (
+            str(min_trade_date) <= target_start_biz_date
+            and str(max_trade_date) >= artifact_biz_date
+        )
     finally:
         connection.close()
 
@@ -1427,10 +1622,13 @@ def _print_summary(summary: dict[str, object]) -> None:
 def _print_backfill_summary(summary: dict[str, object]) -> None:
     print("QuantA market data backfill complete:")
     print(f"- provider: {summary['provider']}")
+    print(f"- artifact_mode: {summary.get('artifact_mode', 'all')}")
     print(f"- start_biz_date: {summary['start_biz_date']}")
     print(f"- end_biz_date: {summary['end_biz_date']}")
     print(f"- open_biz_date_count: {len(summary['open_biz_dates'])}")
     print(f"- synced_biz_date_count: {len(summary['synced_biz_dates'])}")
+    print(f"- source_only_raw_snapshot_count: {summary.get('source_only_raw_snapshot_count', 0)}")
+    print(f"- artifact_snapshot_count: {summary.get('artifact_snapshot_count', summary['snapshot_count'])}")
     print(f"- skipped_existing_biz_date_count: {len(summary['skipped_existing_biz_dates'])}")
     if summary["synced_biz_dates"]:
         print(f"- synced_biz_dates: {', '.join(summary['synced_biz_dates'])}")
@@ -1457,6 +1655,15 @@ def main() -> int:
         default=None,
         help="Optional target start biz_date for a rolling backfill window resolved through open trade days.",
     )
+    parser.add_argument(
+        "--artifact-mode",
+        choices=("all", "latest"),
+        default="all",
+        help=(
+            "Backfill artifact publishing mode. 'all' publishes every synced date; "
+            "'latest' ingests intermediate raw facts and publishes only the window end."
+        ),
+    )
     parser.add_argument("--print-summary", action="store_true", help="Print a short sync summary.")
     args = parser.parse_args()
 
@@ -1475,6 +1682,7 @@ def main() -> int:
             settings,
             start_biz_date=args.start_biz_date,
             end_biz_date=args.end_biz_date,
+            artifact_mode=args.artifact_mode,
         )
         if args.print_summary:
             _print_backfill_summary(summary)
@@ -1489,6 +1697,7 @@ def main() -> int:
             settings,
             start_biz_date=str(target_window["start_biz_date"]),
             end_biz_date=str(target_window["end_biz_date"]),
+            artifact_mode=args.artifact_mode,
         )
         if args.print_summary:
             _print_backfill_summary(summary)
@@ -1503,6 +1712,7 @@ def main() -> int:
             settings,
             start_biz_date=str(target_window["start_biz_date"]),
             end_biz_date=str(target_window["end_biz_date"]),
+            artifact_mode=args.artifact_mode,
         )
         if args.print_summary:
             _print_backfill_summary(summary)
