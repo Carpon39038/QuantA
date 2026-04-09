@@ -1,0 +1,42 @@
+{
+  "plan_id": "2026-04-08-m21-history-coverage-targeting-for-corporate-actions",
+  "title": "M21 History Coverage Targeting For Corporate Actions",
+  "items": [
+    {
+      "id": "sync-lookback-open-days",
+      "title": "Sync CLI supports rolling lookback windows",
+      "description": "Market-data sync can resolve a rolling backfill window from the latest source biz date via --lookback-open-days.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "history-backfill-lookback-tasking",
+      "title": "history_backfill supports lookback_open_days",
+      "description": "The history_backfill service path, queue payload, worker and HTTP API all accept lookback_open_days in addition to explicit date ranges.",
+      "verification": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "scheduler-history-coverage-target",
+      "title": "Scheduler can treat insufficient history coverage as unsettled",
+      "description": "When QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS is configured, the scheduler will enqueue history_backfill until the latest READY snapshot covers at least the target window.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/tasking/scheduler.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "history-coverage-observability",
+      "title": "Health and live backfill outputs expose coverage depth",
+      "description": "System health returns history_coverage, and tushare_live_backfill_smoke reports history_coverage and corporate_action_check to show whether reconciliation is progressing from out_of_coverage to checked/aligned.",
+      "verification": [
+        "QUANTA_LIVE_BACKFILL_OPEN_DAYS=10 python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

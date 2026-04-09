@@ -1,0 +1,43 @@
+{
+  "plan_id": "2026-04-08-m22-target-start-date-backfill-convergence",
+  "title": "M22 Target Start Date Backfill Convergence",
+  "items": [
+    {
+      "id": "sync-target-start-biz-date",
+      "title": "Sync CLI supports explicit target start date",
+      "description": "Market-data sync can resolve a backfill window from a concrete target_start_biz_date via --target-start-biz-date.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "history-backfill-target-date-tasking",
+      "title": "history_backfill supports target_start_biz_date",
+      "description": "The history_backfill service path, queue payload, worker, runtime metadata and HTTP API all accept target_start_biz_date in addition to lookback_open_days and explicit date ranges.",
+      "verification": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "scheduler-target-start-priority",
+      "title": "Scheduler can target a concrete coverage start date",
+      "description": "When QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE is configured, the scheduler will treat insufficient history coverage as unsettled and use the target start date ahead of target_open_days.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/tasking/scheduler.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "live-target-date-convergence",
+      "title": "Live backfill converges corporate-action coverage with target dates",
+      "description": "Explicit target_start_biz_date live runs can first surface a boundary gap at the event boundary and then eliminate it by pushing the coverage start date earlier.",
+      "verification": [
+        "QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2026-01-29 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py",
+        "QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2026-01-20 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py"
+      ],
+      "passes": true
+    }
+  ]
+}

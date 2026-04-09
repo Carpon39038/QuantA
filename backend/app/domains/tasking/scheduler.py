@@ -8,6 +8,8 @@ from backend.app.app_wiring.settings import AppSettings, load_settings
 from backend.app.domains.market_data.sync import (
     latest_source_biz_date,
     load_latest_building_snapshot,
+    resolve_source_backfill_window,
+    resolve_source_backfill_window_to_start_date,
 )
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.queue import enqueue_service_task
@@ -55,9 +57,31 @@ def enqueue_next_pipeline_task(settings: AppSettings) -> dict[str, object]:
     source_biz_date = latest_source_biz_date(settings)
     latest_ready_snapshot = _load_latest_ready_snapshot_meta(settings)
     if latest_ready_snapshot is not None and source_biz_date <= str(latest_ready_snapshot["biz_date"]):
+        if _history_backfill_target_needs_extension(
+            settings,
+            latest_ready_snapshot=latest_ready_snapshot,
+            source_biz_date=source_biz_date,
+        ):
+            return {
+                "enqueued": enqueue_service_task(
+                    settings,
+                    task_name="history_backfill",
+                    lookback_open_days=_history_backfill_target_open_days(settings),
+                    target_start_biz_date=settings.history_backfill_target_start_biz_date,
+                )
+            }
         return {"enqueued": None, "reason": "source_not_newer"}
 
     if latest_ready_snapshot is not None:
+        if settings.history_backfill_target_open_days > 0:
+            return {
+                "enqueued": enqueue_service_task(
+                    settings,
+                    task_name="history_backfill",
+                    lookback_open_days=_history_backfill_target_open_days(settings),
+                    target_start_biz_date=settings.history_backfill_target_start_biz_date,
+                )
+            }
         return {"enqueued": enqueue_service_task(settings, task_name="history_backfill")}
 
     return {"enqueued": enqueue_service_task(settings, task_name="daily_sync")}
@@ -140,7 +164,16 @@ def is_pipeline_settled(settings: AppSettings) -> bool:
     latest_ready_snapshot = _load_latest_ready_snapshot_meta(settings)
     if latest_ready_snapshot is None:
         return False
-    return latest_source_biz_date(settings) <= str(latest_ready_snapshot["biz_date"])
+    source_biz_date = latest_source_biz_date(settings)
+    if source_biz_date > str(latest_ready_snapshot["biz_date"]):
+        return False
+    if _history_backfill_target_needs_extension(
+        settings,
+        latest_ready_snapshot=latest_ready_snapshot,
+        source_biz_date=source_biz_date,
+    ):
+        return False
+    return True
 
 
 def _has_open_service_queue_items(settings: AppSettings) -> bool:
@@ -190,6 +223,84 @@ def _load_artifact_status(settings: AppSettings, *, snapshot_id: str) -> dict[st
         if row is None:
             raise LookupError(f"Unknown snapshot_id: {snapshot_id}")
         return dict(json.loads(row[0]))
+    finally:
+        connection.close()
+
+
+def _history_backfill_target_needs_extension(
+    settings: AppSettings,
+    *,
+    latest_ready_snapshot: dict[str, object],
+    source_biz_date: str,
+) -> bool:
+    target_open_days = settings.history_backfill_target_open_days
+    target_start_biz_date = settings.history_backfill_target_start_biz_date
+    if target_open_days <= 0 and target_start_biz_date is None:
+        return False
+
+    coverage = _load_snapshot_history_coverage(
+        settings,
+        snapshot_id=str(latest_ready_snapshot["snapshot_id"]),
+    )
+    coverage_start = str(coverage["start_biz_date"]) if coverage["start_biz_date"] is not None else None
+    if target_start_biz_date is not None:
+        target_window = resolve_source_backfill_window_to_start_date(
+            settings,
+            target_start_biz_date=target_start_biz_date,
+            end_biz_date=source_biz_date,
+        )
+        if coverage_start is None or coverage_start > str(target_window["start_biz_date"]):
+            return True
+
+    if target_open_days > 0:
+        target_window = resolve_source_backfill_window(
+            settings,
+            lookback_open_days=target_open_days,
+            end_biz_date=source_biz_date,
+        )
+        return (
+            coverage["open_day_count"] < target_open_days
+            or coverage_start is None
+            or coverage_start > str(target_window["start_biz_date"])
+        )
+    return False
+
+
+def _history_backfill_target_open_days(settings: AppSettings) -> int | None:
+    if settings.history_backfill_target_start_biz_date is not None:
+        return None
+    return (
+        settings.history_backfill_target_open_days
+        if settings.history_backfill_target_open_days > 0
+        else None
+    )
+
+
+def _load_snapshot_history_coverage(
+    settings: AppSettings,
+    *,
+    snapshot_id: str,
+) -> dict[str, object]:
+    connection = connect_duckdb(settings.duckdb_path, read_only=True)
+    try:
+        row = connection.execute(
+            """
+            SELECT
+              MIN(trade_date),
+              MAX(trade_date),
+              COUNT(DISTINCT trade_date)
+            FROM price_series_daily
+            WHERE snapshot_id = ?
+              AND price_basis = 'raw'
+            """,
+            [snapshot_id],
+        ).fetchone()
+        min_trade_date, max_trade_date, open_day_count = row
+        return {
+            "start_biz_date": str(min_trade_date) if min_trade_date is not None else None,
+            "end_biz_date": str(max_trade_date) if max_trade_date is not None else None,
+            "open_day_count": int(open_day_count or 0),
+        }
     finally:
         connection.close()
 

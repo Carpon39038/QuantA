@@ -142,6 +142,8 @@ function renderStatusStrip(
   const okProviderCount = validationProviders.filter((item) => item.status === "OK").length;
   const warnProviderCount = validationProviders.filter((item) => item.status === "WARN").length;
   const alertSummary = systemHealthPayload.alert_summary ?? alertsPayload.summary ?? {};
+  const historyCoverage = systemHealthPayload.history_coverage ?? {};
+  const recommendedTargetStartBizDate = historyCoverage.recommended_target_start_biz_date ?? null;
   const latestAlert = alertsPayload.items?.[alertsPayload.items.length - 1] ?? null;
   const topProviderAlert = alertSummary.provider_alerts?.[0] ?? null;
   const cards = [
@@ -154,6 +156,16 @@ function renderStatusStrip(
       label: "研究池",
       value: snapshotPayload.runtime?.source_universe ?? "--",
       detail: `${snapshotPayload.runtime?.source_symbol_count ?? "--"} 只跟踪`
+    },
+    {
+      label: "历史覆盖",
+      value:
+        historyCoverage.open_day_count != null
+          ? `${historyCoverage.open_day_count} 天游`
+          : "--",
+      detail: recommendedTargetStartBizDate
+        ? `当前起点 ${historyCoverage.start_biz_date ?? "--"} · 建议补到 ${recommendedTargetStartBizDate}`
+        : `${historyCoverage.start_biz_date ?? "--"} -> ${historyCoverage.end_biz_date ?? "--"}`
     },
     {
       label: "补充校验",
@@ -533,11 +545,22 @@ function renderTaskStatus(snapshotPayload, systemHealthPayload, alertsPayload) {
   const warningCount = Number(alertSummary.severity_counts?.warning ?? 0);
   const providerIncidents = alertSummary.provider_alerts ?? [];
   const metaParts = [`${systemHealthPayload.alert_count ?? 0} 条 runtime alerts`];
+  const historyCoverage = systemHealthPayload.history_coverage ?? {};
+  const recommendedTargetStartBizDate =
+    historyCoverage.recommended_target_start_biz_date ?? null;
+  const recommendationReason = historyCoverage.recommendation_reason ?? null;
   if (warningCount > 0) {
     metaParts.push(`${warningCount} 条 warning`);
   }
   if (providerIncidents.length > 0) {
     metaParts.push(`${providerIncidents.length} 个 provider incident`);
+  }
+  if (recommendedTargetStartBizDate) {
+    metaParts.push(
+      recommendationReason === "resolve_boundary_gap"
+        ? `建议补到 ${recommendedTargetStartBizDate} 以消除边界缺口`
+        : `建议补到 ${recommendedTargetStartBizDate}`
+    );
   }
   alertMetaNode.textContent = metaParts.join(" · ");
   alertListNode.innerHTML = "";

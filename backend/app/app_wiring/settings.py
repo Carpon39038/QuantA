@@ -82,6 +82,8 @@ class AppSettings:
     task_max_retries: int
     task_retry_backoff_seconds: int
     scheduler_poll_interval_seconds: int
+    history_backfill_target_open_days: int
+    history_backfill_target_start_biz_date: str | None
     backend_host: str
     backend_port: int
     frontend_host: str
@@ -185,6 +187,13 @@ def load_settings() -> AppSettings:
         scheduler_poll_interval_seconds=_parse_int(
             "QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS",
             5,
+        ),
+        history_backfill_target_open_days=_parse_int(
+            "QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS",
+            0,
+        ),
+        history_backfill_target_start_biz_date=_parse_optional_str(
+            "QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE"
         ),
         backend_host=os.environ.get("QUANTA_BACKEND_HOST", "127.0.0.1"),
         backend_port=_parse_port("QUANTA_BACKEND_PORT", 8765),

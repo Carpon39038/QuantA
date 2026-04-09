@@ -31,6 +31,67 @@ def _open_connection(settings: AppSettings):
     return connect_duckdb(settings.duckdb_path, read_only=True)
 
 
+def _previous_open_trade_date(
+    connection,
+    reference_date: str | None,
+) -> str | None:
+    if not reference_date:
+        return None
+    row = connection.execute(
+        """
+        SELECT MAX(trade_date)
+        FROM trade_calendar
+        WHERE is_open = TRUE
+          AND trade_date < CAST(? AS DATE)
+        """,
+        [reference_date],
+    ).fetchone()
+    previous_trade_date = row[0] if row is not None else None
+    return _isoformat(previous_trade_date) if previous_trade_date is not None else None
+
+
+def _build_history_coverage_recommendation(
+    connection,
+    shadow_validation: dict[str, object],
+) -> dict[str, object]:
+    corporate_action_check = (
+        shadow_validation.get("canonical_checks", {}).get("corporate_action", {})
+        if isinstance(shadow_validation, dict)
+        else {}
+    )
+    coverage_start_biz_date = corporate_action_check.get("coverage_start_biz_date")
+    nearest_out_of_coverage_event_date = corporate_action_check.get(
+        "nearest_out_of_coverage_event_date"
+    )
+    boundary_gap_count = int(corporate_action_check.get("boundary_gap_count") or 0)
+
+    if boundary_gap_count > 0 and coverage_start_biz_date:
+        return {
+            "recommended_target_start_biz_date": _previous_open_trade_date(
+                connection,
+                str(coverage_start_biz_date),
+            ),
+            "recommendation_reason": "resolve_boundary_gap",
+            "recommendation_anchor_biz_date": str(coverage_start_biz_date),
+        }
+
+    if nearest_out_of_coverage_event_date:
+        return {
+            "recommended_target_start_biz_date": _previous_open_trade_date(
+                connection,
+                str(nearest_out_of_coverage_event_date),
+            ),
+            "recommendation_reason": "extend_to_next_out_of_coverage",
+            "recommendation_anchor_biz_date": str(nearest_out_of_coverage_event_date),
+        }
+
+    return {
+        "recommended_target_start_biz_date": None,
+        "recommendation_reason": None,
+        "recommendation_anchor_biz_date": None,
+    }
+
+
 def _fetch_published_snapshot_meta(
     connection,
     snapshot_id: str | None = None,
@@ -2476,6 +2537,29 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
                 [latest_snapshot["snapshot_id"]],
             ).fetchone()[0]
         )
+        min_trade_date, max_trade_date, open_day_count = connection.execute(
+            """
+            SELECT
+              MIN(trade_date),
+              MAX(trade_date),
+              COUNT(DISTINCT trade_date)
+            FROM price_series_daily
+            WHERE snapshot_id = ?
+              AND price_basis = ?
+            """,
+            [latest_snapshot["snapshot_id"], latest_snapshot["price_basis"]],
+        ).fetchone()
+        shadow_validation = raw_snapshot["source_watermark"].get(
+            "shadow_validation",
+            {
+                "status": "UNKNOWN",
+                "providers": [],
+            },
+        )
+        history_coverage_recommendation = _build_history_coverage_recommendation(
+            connection,
+            shadow_validation,
+        )
         return {
             "status": "ok",
             "snapshot_id": latest_snapshot["snapshot_id"],
@@ -2487,13 +2571,17 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
             "task_count": task_count,
             "alert_count": int(alert_summary["window_count"]),
             "alert_summary": alert_summary,
-            "shadow_validation": raw_snapshot["source_watermark"].get(
-                "shadow_validation",
-                {
-                    "status": "UNKNOWN",
-                    "providers": [],
-                },
-            ),
+            "history_coverage": {
+                "start_biz_date": _isoformat(min_trade_date)
+                if min_trade_date is not None
+                else None,
+                "end_biz_date": _isoformat(max_trade_date)
+                if max_trade_date is not None
+                else None,
+                "open_day_count": int(open_day_count or 0),
+                **history_coverage_recommendation,
+            },
+            "shadow_validation": shadow_validation,
         }
     finally:
         connection.close()

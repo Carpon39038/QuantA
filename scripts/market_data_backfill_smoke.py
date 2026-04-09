@@ -18,7 +18,11 @@ if str(ROOT) not in sys.path:
 
 
 from backend.app.app_wiring.settings import load_settings
-from backend.app.domains.market_data.sync import backfill_market_data
+from backend.app.domains.market_data.sync import (
+    backfill_market_data,
+    resolve_source_backfill_window,
+    resolve_source_backfill_window_to_start_date,
+)
 
 
 OPEN_DATES = ("20260331", "20260401", "20260402")
@@ -410,10 +414,30 @@ def main() -> int:
             )
 
             settings = load_settings()
+            target_window = resolve_source_backfill_window(
+                settings,
+                lookback_open_days=3,
+                end_biz_date="2026-04-02",
+            )
+            assert target_window["target_open_biz_dates"] == [
+                "2026-03-31",
+                "2026-04-01",
+                "2026-04-02",
+            ]
+            target_start_window = resolve_source_backfill_window_to_start_date(
+                settings,
+                target_start_biz_date="2026-03-31",
+                end_biz_date="2026-04-02",
+            )
+            assert target_start_window["target_open_biz_dates"] == [
+                "2026-03-31",
+                "2026-04-01",
+                "2026-04-02",
+            ]
             summary = backfill_market_data(
                 settings,
-                start_biz_date="2026-03-31",
-                end_biz_date="2026-04-02",
+                start_biz_date=str(target_window["start_biz_date"]),
+                end_biz_date=str(target_window["end_biz_date"]),
             )
             assert summary["open_biz_dates"] == [
                 "2026-03-31",
@@ -426,8 +450,8 @@ def main() -> int:
 
             rerun_summary = backfill_market_data(
                 settings,
-                start_biz_date="2026-03-31",
-                end_biz_date="2026-04-02",
+                start_biz_date=str(target_window["start_biz_date"]),
+                end_biz_date=str(target_window["end_biz_date"]),
             )
             assert rerun_summary["snapshot_count"] == 0
             assert rerun_summary["synced_biz_dates"] == []

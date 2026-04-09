@@ -9,6 +9,8 @@ from backend.app.domains.market_data.sync import (
     latest_source_biz_date,
     list_source_biz_dates,
     load_latest_building_snapshot,
+    resolve_source_backfill_window,
+    resolve_source_backfill_window_to_start_date,
 )
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.service_runner import SUPPORTED_SERVICE_TASKS
@@ -26,6 +28,8 @@ def enqueue_service_task(
     snapshot_id: str | None = None,
     start_biz_date: str | None = None,
     end_biz_date: str | None = None,
+    lookback_open_days: int | None = None,
+    target_start_biz_date: str | None = None,
 ) -> dict[str, object]:
     if task_name not in SUPPORTED_SERVICE_TASKS:
         raise ValueError(f"Unsupported service task: {task_name}")
@@ -43,12 +47,19 @@ def enqueue_service_task(
             task_name=task_name,
             snapshot_id=snapshot_id,
         )
-        resolved_start_biz_date, resolved_end_biz_date = _resolve_service_date_range(
+        (
+            resolved_start_biz_date,
+            resolved_end_biz_date,
+            resolved_lookback_open_days,
+            resolved_target_start_biz_date,
+        ) = _resolve_service_date_range(
             settings,
             connection,
             task_name=task_name,
             start_biz_date=start_biz_date,
             end_biz_date=end_biz_date,
+            lookback_open_days=lookback_open_days,
+            target_start_biz_date=target_start_biz_date,
         )
         _replace_task_run_log(
             connection,
@@ -65,6 +76,8 @@ def enqueue_service_task(
                 "requested_at": requested_at,
                 "start_biz_date": resolved_start_biz_date,
                 "end_biz_date": resolved_end_biz_date,
+                "lookback_open_days": resolved_lookback_open_days,
+                "target_start_biz_date": resolved_target_start_biz_date,
             },
         )
     finally:
@@ -80,6 +93,8 @@ def enqueue_service_task(
         "biz_date": str(published_snapshot["biz_date"]),
         "start_biz_date": resolved_start_biz_date,
         "end_biz_date": resolved_end_biz_date,
+        "lookback_open_days": resolved_lookback_open_days,
+        "target_start_biz_date": resolved_target_start_biz_date,
         "retry_count": 0,
         "max_retries": settings.task_max_retries,
         "next_attempt_at": requested_at,
@@ -101,6 +116,8 @@ def enqueue_service_task(
         "retry_count": 0,
         "start_biz_date": resolved_start_biz_date,
         "end_biz_date": resolved_end_biz_date,
+        "lookback_open_days": resolved_lookback_open_days,
+        "target_start_biz_date": resolved_target_start_biz_date,
         "queue_path": str(queue_path),
     }
 
@@ -367,18 +384,78 @@ def _resolve_service_date_range(
     task_name: str,
     start_biz_date: str | None,
     end_biz_date: str | None,
-) -> tuple[str | None, str | None]:
+    lookback_open_days: int | None,
+    target_start_biz_date: str | None,
+) -> tuple[str | None, str | None, int | None, str | None]:
     if task_name != "history_backfill":
-        return None, None
+        return None, None, None, None
 
     if bool(start_biz_date) != bool(end_biz_date):
         raise ValueError("history_backfill requires start_biz_date and end_biz_date together")
+    if lookback_open_days is not None and target_start_biz_date is not None:
+        raise ValueError(
+            "history_backfill cannot combine lookback_open_days with target_start_biz_date"
+        )
     if start_biz_date is not None and end_biz_date is not None:
-        return start_biz_date, end_biz_date
+        return start_biz_date, end_biz_date, lookback_open_days, target_start_biz_date
 
+    resolved_lookback_open_days = (
+        int(lookback_open_days) if lookback_open_days is not None else None
+    )
+    resolved_target_start_biz_date = (
+        str(target_start_biz_date) if target_start_biz_date is not None else None
+    )
     latest_ready_snapshot = _resolve_published_snapshot(connection, snapshot_id=None)
     latest_ready_biz_date = str(latest_ready_snapshot["biz_date"])
     source_biz_date = latest_source_biz_date(settings)
+    if resolved_target_start_biz_date is not None:
+        target_window = resolve_source_backfill_window_to_start_date(
+            settings,
+            target_start_biz_date=resolved_target_start_biz_date,
+            end_biz_date=source_biz_date,
+        )
+        coverage = _load_snapshot_history_coverage(
+            connection,
+            snapshot_id=str(latest_ready_snapshot["snapshot_id"]),
+        )
+        if (
+            source_biz_date <= latest_ready_biz_date
+            and coverage["start_biz_date"] is not None
+            and str(coverage["start_biz_date"]) <= str(target_window["start_biz_date"])
+        ):
+            raise ValueError("history_backfill already satisfies target_start_biz_date")
+        return (
+            str(target_window["start_biz_date"]),
+            str(target_window["end_biz_date"]),
+            None,
+            resolved_target_start_biz_date,
+        )
+    if resolved_lookback_open_days is not None:
+        if resolved_lookback_open_days <= 0:
+            raise ValueError("history_backfill lookback_open_days must be positive")
+        target_window = resolve_source_backfill_window(
+            settings,
+            lookback_open_days=resolved_lookback_open_days,
+            end_biz_date=source_biz_date,
+        )
+        coverage = _load_snapshot_history_coverage(
+            connection,
+            snapshot_id=str(latest_ready_snapshot["snapshot_id"]),
+        )
+        if (
+            source_biz_date <= latest_ready_biz_date
+            and coverage["open_day_count"] >= resolved_lookback_open_days
+            and coverage["start_biz_date"] is not None
+            and str(coverage["start_biz_date"]) <= str(target_window["start_biz_date"])
+        ):
+            raise ValueError("history_backfill already satisfies lookback_open_days")
+        return (
+            str(target_window["start_biz_date"]),
+            str(target_window["end_biz_date"]),
+            resolved_lookback_open_days,
+            None,
+        )
+
     if source_biz_date <= latest_ready_biz_date:
         raise ValueError("history_backfill has no newer biz_date to ingest")
 
@@ -390,4 +467,29 @@ def _resolve_service_date_range(
     pending_dates = [biz_date for biz_date in candidate_dates if biz_date > latest_ready_biz_date]
     if not pending_dates:
         raise ValueError("history_backfill has no open biz dates beyond the latest READY snapshot")
-    return pending_dates[0], pending_dates[-1]
+    return pending_dates[0], pending_dates[-1], None, None
+
+
+def _load_snapshot_history_coverage(
+    connection,
+    *,
+    snapshot_id: str,
+) -> dict[str, object]:
+    row = connection.execute(
+        """
+        SELECT
+          MIN(trade_date),
+          MAX(trade_date),
+          COUNT(DISTINCT trade_date)
+        FROM price_series_daily
+        WHERE snapshot_id = ?
+          AND price_basis = 'raw'
+        """,
+        [snapshot_id],
+    ).fetchone()
+    min_trade_date, max_trade_date, open_day_count = row
+    return {
+        "start_biz_date": str(min_trade_date) if min_trade_date is not None else None,
+        "end_biz_date": str(max_trade_date) if max_trade_date is not None else None,
+        "open_day_count": int(open_day_count or 0),
+    }

@@ -268,6 +268,8 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         "source_validation_providers": list(
                             container.settings.source_validation_providers
                         ),
+                        "history_backfill_target_open_days": container.settings.history_backfill_target_open_days,
+                        "history_backfill_target_start_biz_date": container.settings.history_backfill_target_start_biz_date,
                     },
                 )
                 return
@@ -340,6 +342,13 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         or _body_value(body, "start_biz_date"),
                         end_biz_date=_query_value(query, "end_biz_date")
                         or _body_value(body, "end_biz_date"),
+                        lookback_open_days=(
+                            _coerce_optional_int(_query_value(query, "lookback_open_days"))
+                            if _query_value(query, "lookback_open_days") is not None
+                            else _body_int_value(body, "lookback_open_days")
+                        ),
+                        target_start_biz_date=_query_value(query, "target_start_biz_date")
+                        or _body_value(body, "target_start_biz_date"),
                     )
                     self._send_json(
                         202,
@@ -500,6 +509,12 @@ def _body_value(body: dict[str, object], name: str) -> str | None:
 
 def _body_int_value(body: dict[str, object], name: str) -> int | None:
     value = body.get(name)
+    if value is None:
+        return None
+    return int(value)
+
+
+def _coerce_optional_int(value: str | None) -> int | None:
     if value is None:
         return None
     return int(value)

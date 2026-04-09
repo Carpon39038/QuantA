@@ -23,14 +23,16 @@
 6. `python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --iterations 3`
 7. `python3 -m backend.app.domains.market_data.bootstrap --print-summary`
 8. `python3 -m backend.app.domains.market_data.sync --print-summary`
-9. `python3 -m backend.app.domains.analysis.bootstrap --print-summary`
-10. `python3 -m backend.app.domains.screener.bootstrap --print-summary`
-11. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
-12. `python3 scripts/tushare_provider_smoke.py`
-13. `python3 scripts/tushare_live_smoke.py`
-14. `python3 scripts/tushare_live_sync_smoke.py`
-15. `python3 scripts/market_data_backfill_smoke.py`
-16. `python3 scripts/tushare_live_backfill_smoke.py`
+9. `python3 -m backend.app.domains.market_data.sync --lookback-open-days 20 --print-summary`
+10. `python3 -m backend.app.domains.market_data.sync --target-start-biz-date 2026-01-29 --print-summary`
+11. `python3 -m backend.app.domains.analysis.bootstrap --print-summary`
+12. `python3 -m backend.app.domains.screener.bootstrap --print-summary`
+13. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
+14. `python3 scripts/tushare_provider_smoke.py`
+15. `python3 scripts/tushare_live_smoke.py`
+16. `python3 scripts/tushare_live_sync_smoke.py`
+17. `python3 scripts/market_data_backfill_smoke.py`
+18. `python3 scripts/tushare_live_backfill_smoke.py`
 
 当前行为已升级为 `source-backed DuckDB dev foundation`：
 
@@ -39,7 +41,7 @@
 3. startup 会按 `market_data -> analysis -> screener -> backtest` 顺序完成最小 dev bootstrap；repo 查询使用 DuckDB 只读连接，避免写时副作用。
 4. 已提供 stock detail 入口：`/api/v1/stocks/{symbol}/snapshot`、`/api/v1/stocks/{symbol}/kline`、`/api/v1/stocks/{symbol}/indicators`、`/api/v1/stocks/{symbol}/capital-flow`、`/api/v1/stocks/{symbol}/fundamentals`、`/api/v1/stocks/{symbol}/disclosures`、`/api/v1/stocks/{symbol}/corporate-actions`。
 5. 已提供 screener/backtest detail 入口：`/api/v1/screener/runs/latest`、`/api/v1/screener/runs/{run_id}`、`/api/v1/backtests/runs/latest`、`/api/v1/backtests/runs/{backtest_id}`。
-6. 已提供最小 tasking/service 入口：`/api/v1/tasks/runs`、`/api/v1/system/health`、`/api/v1/system/alerts`、`POST /api/v1/tasks/daily-sync/run`、`POST /api/v1/tasks/history-backfill/run`、`POST /api/v1/tasks/daily-screener/run`、`POST /api/v1/tasks/daily-backtest/run`、`POST /api/v1/backtests/runs`。
+6. 已提供最小 tasking/service 入口：`/api/v1/tasks/runs`、`/api/v1/system/health`、`/api/v1/system/alerts`、`POST /api/v1/tasks/daily-sync/run`、`POST /api/v1/tasks/history-backfill/run`、`POST /api/v1/tasks/daily-screener/run`、`POST /api/v1/tasks/daily-backtest/run`、`POST /api/v1/backtests/runs`；其中 `history-backfill` 现支持 `lookback_open_days` 与 `target_start_biz_date`，既可以按最新 source 日期自动解析滚动回补窗口，也可以直接指定“至少补到哪一天”。
 7. `daily_sync` 已改成真正的 source-backed sync：会先写 `raw_snapshot` 与 `artifact_publish(status=BUILDING)`，再由 `daily_screener`、`daily_backtest` 逐步补齐产物并最终发布为 `READY`。
 8. service/backtest durable queue 现已带 `retry_count`、`max_retries`、`next_attempt_at` 与 `last_error`，worker 会执行 retry/backoff，并在耗尽时写本地 alerts JSONL。
 9. 已提供最小 `domains.tasking.scheduler` resident loop，可轮询 auto pipeline，并通过 `scripts/pipeline_smoke.py` 覆盖成功路径与 retry 路径。
@@ -63,10 +65,12 @@
 27. 2026-04-07 在 `core_operating_40` 上实测，canonical `tushare` 的 `adj_factor/limit_price/suspension` 三类检查均为 `OK`；同一轮 live sync 真实写出 `936` 条 `corporate_action_item`；`baostock` 对原始行情七字段达到 `40/40` match，但在 10 只较老股票上暴露 `adj_factor_semantics_mismatch`；`akshare` 仍会受其上游 Eastmoney 链路稳定性影响，当前在该研究池 live sync 中表现为 `WARN/partial_coverage`，但不会阻断 canonical sync 本身。
 28. `market_data.sync` 现在会把 `shadow_validation` 降级项写成本地 alerts；`scripts/tushare_live_sync_smoke.py` 也会在隔离 runtime 中输出 `alert_count` 与最近 alerts，workbench 会直接把最近 alerts 和 provider incident 摘要展示出来，便于验证降级是否真的落盘并被使用者看到。
 29. `QUANTA_ALERTS_PATH` 现按 `QUANTA_RUNTIME_DATA_DIR` 相对解析；隔离 smoke 与常驻 runtime 不再错误共用 repo root 下的一份 alerts JSONL。
-30. `python3 -m backend.app.domains.market_data.sync --start-biz-date YYYY-MM-DD --end-biz-date YYYY-MM-DD --print-summary` 现在已支持最小历史回补；provider 会先列出开市日，再按日期逐日同步，并默认跳过已存在的 `biz_date`，避免重复堆叠同日快照。
-31. `scripts/market_data_backfill_smoke.py` 会在 fake Tushare 环境里验证“首跑回补 + 二次跳过已存在日期”；`scripts/tushare_live_backfill_smoke.py` 则会在真 token 下用隔离 DuckDB 验证最近 5 个交易日的 live backfill，并保持企业行为 sidecar 的写入。
+30. `python3 -m backend.app.domains.market_data.sync --start-biz-date YYYY-MM-DD --end-biz-date YYYY-MM-DD --print-summary` 现在已支持最小历史回补；provider 会先列出开市日，再按日期逐日同步，并默认跳过已存在的 `biz_date`，避免重复堆叠同日快照。现在也支持 `--lookback-open-days N` 与 `--target-start-biz-date YYYY-MM-DD`，分别用于“按窗口推深历史”和“直接补到某个起始日期”。
+31. `scripts/market_data_backfill_smoke.py` 会在 fake Tushare 环境里验证 `lookback window` 与 `target start date` 两种解析方式，以及“首跑回补 + 二次跳过已存在日期”；`scripts/tushare_live_backfill_smoke.py` 则会在真 token 下用隔离 DuckDB 输出 `lookback_open_days/target_start_biz_date`、`history_coverage` 和 `corporate_action_check`，用来观察企业行为 reconciliation 是否随着窗口加深而推进。
 32. `history_backfill` 现在也已接入 API / durable queue / worker / scheduler；scheduler 在发现最新 READY snapshot 落后于 source provider 时，会优先 enqueue `history_backfill`，而不是只同步单天。
-33. `history_backfill` service task 会把区间内每个新同步 snapshot 继续推进 through `daily_screener -> daily_backtest -> READY`，避免在正式运行时留下悬空 `BUILDING` 历史快照。
-34. 官方披露 sidecar 现已按 `CNInfo official search + stock lookup JSON` 接入 `official_disclosure_item`，并通过 stock disclosures API 与 workbench 暴露最小公告元数据；默认 `fixture_json` 开发链会从 `backend/app/fixtures/source_disclosures/` 读取本地披露 fixture，live `tushare`/`akshare` 则默认走 `cninfo`。
-35. 当前官方披露接入仍是“公告元数据优先”，主要覆盖标题、公告时间、详情链接和 PDF 链接；公告正文抽取、交易所问询和更丰富的披露分类仍在后续范围内。
-36. `/api/v1/system/health` 与 `/api/v1/system/alerts` 现在会返回 `alert_summary`，聚合最近窗口里的 severity、alert type 和 provider incidents，前端会优先呈现最新 provider degradation，而不只是一串原始 alerts。
+33. 当 `QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS > 0` 或 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 被设置时，scheduler 即使在 source 已追平后，也会继续把“历史覆盖不足”视为未 settled 状态，并自动 enqueue `history_backfill` 去扩最新 READY snapshot 的历史覆盖窗口。
+34. `/api/v1/system/health` 现在会返回最新 READY snapshot 的 `history_coverage(start_biz_date/end_biz_date/open_day_count)`，以及 `recommended_target_start_biz_date/recommendation_reason/recommendation_anchor_biz_date`，便于直接从系统面判断当前回补深度和下一次建议补到哪天。
+35. 2026-04-08 在 `core_operating_40` 上实测，`QUANTA_LIVE_BACKFILL_OPEN_DAYS=10 python3 scripts/tushare_live_backfill_smoke.py` 会把最新覆盖推进到 `2026-03-25 -> 2026-04-08` 的 10 个 open days，并给出 `nearest_out_of_coverage_event_date = 2026-02-12`；继续用 `QUANTA_LIVE_BACKFILL_OPEN_DAYS=40 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py` 后，覆盖已推进到 `2026-02-03 -> 2026-04-08` 的 40 个 open days，且 `corporate_action_check` 首次进入 `OK (checked=3, aligned=3)`，剩余最近缺口变成 `2026-01-29`。随后继续用 `QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2026-01-29` 明确把窗口推到该事件日，结果变成 `checked=4, aligned=3, boundary_gap=1, nearest_out_of_coverage_event_date=2026-01-23`；再把目标起始日推进到 `2026-01-20` 后，覆盖到达 `2026-01-20 -> 2026-04-08` 的 50 个 open days，`corporate_action_check` 已达到 `OK (checked=5, aligned=5, boundary_gap=0)`，剩余最近缺口继续前移到 `2026-01-16`。
+36. 官方披露 sidecar 现已按 `CNInfo official search + stock lookup JSON` 接入 `official_disclosure_item`，并通过 stock disclosures API 与 workbench 暴露最小公告元数据；默认 `fixture_json` 开发链会从 `backend/app/fixtures/source_disclosures/` 读取本地披露 fixture，live `tushare`/`akshare` 则默认走 `cninfo`。
+37. 当前官方披露接入仍是“公告元数据优先”，主要覆盖标题、公告时间、详情链接和 PDF 链接；公告正文抽取、交易所问询和更丰富的披露分类仍在后续范围内。
+38. `/api/v1/system/health` 与 `/api/v1/system/alerts` 现在会返回 `alert_summary`，聚合最近窗口里的 severity、alert type 和 provider incidents；前端除了呈现最新 provider degradation，也会直接显示最新 `history_coverage` 与建议的下一次 target start date，而不只是一串原始 alerts。

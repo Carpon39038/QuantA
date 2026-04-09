@@ -273,6 +273,8 @@ def _process_one_service_request(
     requested_at = str(queue_item["requested_at"])
     start_biz_date = queue_item.get("start_biz_date")
     end_biz_date = queue_item.get("end_biz_date")
+    lookback_open_days = queue_item.get("lookback_open_days")
+    target_start_biz_date = queue_item.get("target_start_biz_date")
 
     replace_service_task_run_log(
         settings,
@@ -289,6 +291,8 @@ def _process_one_service_request(
             "requested_at": requested_at,
             "start_biz_date": start_biz_date,
             "end_biz_date": end_biz_date,
+            "lookback_open_days": lookback_open_days,
+            "target_start_biz_date": target_start_biz_date,
         },
     )
 
@@ -304,6 +308,17 @@ def _process_one_service_request(
         end_biz_date=(
             str(end_biz_date)
             if isinstance(end_biz_date, str) and end_biz_date != ""
+            else None
+        ),
+        lookback_open_days=(
+            int(lookback_open_days)
+            if isinstance(lookback_open_days, int)
+            or (isinstance(lookback_open_days, str) and str(lookback_open_days).strip())
+            else None
+        ),
+        target_start_biz_date=(
+            str(target_start_biz_date)
+            if isinstance(target_start_biz_date, str) and target_start_biz_date != ""
             else None
         ),
     )

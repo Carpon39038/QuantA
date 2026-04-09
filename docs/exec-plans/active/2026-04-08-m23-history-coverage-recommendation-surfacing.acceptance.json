@@ -1,0 +1,35 @@
+{
+  "plan_id": "2026-04-08-m23-history-coverage-recommendation-surfacing",
+  "title": "M23 History Coverage Recommendation Surfacing",
+  "items": [
+    {
+      "id": "health-history-coverage-recommendation",
+      "title": "System health exposes the next recommended target start date",
+      "description": "The latest READY snapshot health payload includes recommended_target_start_biz_date, recommendation_reason and recommendation_anchor_biz_date under history_coverage.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/market_data/repo.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "boundary-gap-aware-recommendation",
+      "title": "Recommendation distinguishes boundary gaps from out-of-coverage gaps",
+      "description": "When corporate_action reconciliation reports boundary_gap_count > 0, the recommendation retreats from the current coverage start date; otherwise it retreats from the nearest out_of_coverage event date.",
+      "verification": [
+        "python3 scripts/check_execution_harness.py --require-all-passing"
+      ],
+      "passes": true
+    },
+    {
+      "id": "workbench-shows-next-target",
+      "title": "Workbench shows the next suggested history backfill target",
+      "description": "The frontend status strip and alert summary render the current history coverage depth together with the next recommended target start date.",
+      "verification": [
+        "node --check frontend/src/app/main.js",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import json
 import os
 from pathlib import Path
@@ -19,7 +18,10 @@ if str(ROOT) not in sys.path:
 
 
 from backend.app.app_wiring.settings import load_settings
-from backend.app.shared.providers.market_data_source import build_market_data_provider
+from backend.app.domains.market_data.sync import (
+    resolve_source_backfill_window,
+    resolve_source_backfill_window_to_start_date,
+)
 
 
 def main() -> int:
@@ -35,20 +37,21 @@ def main() -> int:
         )
 
     settings = load_settings()
-    provider = build_market_data_provider(settings)
-    latest_biz_date = provider.latest_available_biz_date()
-    probe_start_date = (
-        datetime.fromisoformat(latest_biz_date).date() - timedelta(days=10)
-    ).isoformat()
-    open_biz_dates = provider.list_open_biz_dates(
-        start_biz_date=probe_start_date,
-        end_biz_date=latest_biz_date,
-    )
-    target_biz_dates = open_biz_dates[-5:]
-    if len(target_biz_dates) < 2:
-        raise AssertionError(
-            "tushare_live_backfill_smoke requires at least two recent open biz dates"
+    lookback_open_days = int(os.environ.get("QUANTA_LIVE_BACKFILL_OPEN_DAYS", "20"))
+    target_start_biz_date = os.environ.get("QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE")
+    skip_rerun = os.environ.get("QUANTA_LIVE_BACKFILL_SKIP_RERUN", "0") == "1"
+    if target_start_biz_date:
+        target_window = resolve_source_backfill_window_to_start_date(
+            settings,
+            target_start_biz_date=target_start_biz_date,
         )
+    else:
+        target_window = resolve_source_backfill_window(
+            settings,
+            lookback_open_days=lookback_open_days,
+        )
+    target_biz_dates = list(target_window["target_open_biz_dates"])
+    latest_biz_date = str(target_window["end_biz_date"])
 
     with tempfile.TemporaryDirectory(prefix="quanta-live-backfill-") as temp_dir:
         runtime_dir = Path(temp_dir)
@@ -67,10 +70,11 @@ def main() -> int:
                 "python3",
                 "-m",
                 "backend.app.domains.market_data.sync",
-                "--start-biz-date",
-                target_biz_dates[0],
-                "--end-biz-date",
-                target_biz_dates[-1],
+                *(
+                    ["--target-start-biz-date", str(target_start_biz_date)]
+                    if target_start_biz_date
+                    else ["--lookback-open-days", str(lookback_open_days)]
+                ),
                 "--print-summary",
             ],
             cwd=ROOT,
@@ -79,23 +83,26 @@ def main() -> int:
             capture_output=True,
             text=True,
         )
-        second_run = subprocess.run(
-            [
-                "python3",
-                "-m",
-                "backend.app.domains.market_data.sync",
-                "--start-biz-date",
-                target_biz_dates[0],
-                "--end-biz-date",
-                target_biz_dates[-1],
-                "--print-summary",
-            ],
-            cwd=ROOT,
-            env=env,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        second_run = None
+        if not skip_rerun:
+            second_run = subprocess.run(
+                [
+                    "python3",
+                    "-m",
+                    "backend.app.domains.market_data.sync",
+                    *(
+                        ["--target-start-biz-date", str(target_start_biz_date)]
+                        if target_start_biz_date
+                        else ["--lookback-open-days", str(lookback_open_days)]
+                    ),
+                    "--print-summary",
+                ],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
         connection = duckdb.connect(str(runtime_dir / "duckdb" / "quanta.duckdb"), read_only=True)
         try:
@@ -118,8 +125,47 @@ def main() -> int:
                     "SELECT COUNT(*) FROM corporate_action_item"
                 ).fetchone()[0]
             )
+            latest_raw_snapshot_id, latest_source_watermark_json = connection.execute(
+                """
+                SELECT raw_snapshot_id, source_watermark_json
+                FROM raw_snapshot
+                ORDER BY snapshot_seq DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            latest_snapshot_id = str(
+                connection.execute(
+                    """
+                    SELECT snapshot_id
+                    FROM artifact_publish
+                    ORDER BY publish_seq DESC
+                    LIMIT 1
+                    """
+                ).fetchone()[0]
+            )
+            history_coverage = connection.execute(
+                """
+                SELECT
+                  MIN(trade_date),
+                  MAX(trade_date),
+                  COUNT(DISTINCT trade_date)
+                FROM price_series_daily
+                WHERE snapshot_id = ?
+                  AND price_basis = 'raw'
+                """,
+                [latest_snapshot_id],
+            ).fetchone()
         finally:
             connection.close()
+
+        latest_shadow_validation = json.loads(latest_source_watermark_json).get(
+            "shadow_validation",
+            {},
+        )
+        corporate_action_check = latest_shadow_validation.get("canonical_checks", {}).get(
+            "corporate_action",
+            {},
+        )
 
         summary = {
             "ok": True,
@@ -127,14 +173,26 @@ def main() -> int:
             "source_validation_providers": ["none"],
             "disclosure_provider": "none",
             "latest_biz_date": latest_biz_date,
+            "lookback_open_days": lookback_open_days,
+            "target_start_biz_date": target_start_biz_date,
+            "skip_rerun": skip_rerun,
             "target_biz_dates": target_biz_dates,
             "first_run_stdout": first_run.stdout.strip().splitlines(),
-            "second_run_stdout": second_run.stdout.strip().splitlines(),
+            "second_run_stdout": (
+                second_run.stdout.strip().splitlines() if second_run is not None else []
+            ),
             "raw_snapshot_count": raw_snapshot_count,
             "artifact_publish_count": artifact_publish_count,
             "daily_bar_count": daily_bar_count,
             "fundamental_feature_count": fundamental_feature_count,
             "corporate_action_count": corporate_action_count,
+            "latest_raw_snapshot_id": latest_raw_snapshot_id,
+            "history_coverage": {
+                "start_biz_date": str(history_coverage[0]) if history_coverage[0] is not None else None,
+                "end_biz_date": str(history_coverage[1]) if history_coverage[1] is not None else None,
+                "open_day_count": int(history_coverage[2] or 0),
+            },
+            "corporate_action_check": corporate_action_check,
         }
         print(json.dumps(summary, ensure_ascii=False, indent=2))
 

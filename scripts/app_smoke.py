@@ -408,6 +408,7 @@ def main() -> int:
         assert system_health_payload["table_counts"]["backtest_trade"] >= 4
         assert system_health_payload["alert_count"] == baseline_alert_count
         assert system_health_payload["alert_summary"]["window_count"] == baseline_alert_count
+        assert system_health_payload["history_coverage"]["open_day_count"] >= 1
         assert system_health_payload["shadow_validation"]["status"] in {
             "SKIPPED",
             "UNKNOWN",

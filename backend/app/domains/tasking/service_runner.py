@@ -7,6 +7,8 @@ from backend.app.domains.market_data.sync import (
     backfill_market_data,
     finalize_snapshot_publish,
     load_latest_building_snapshot,
+    resolve_source_backfill_window,
+    resolve_source_backfill_window_to_start_date,
     sync_market_data,
 )
 from backend.app.shared.providers.duckdb import connect_duckdb
@@ -32,6 +34,8 @@ def run_service_task(
     snapshot_id: str | None = None,
     start_biz_date: str | None = None,
     end_biz_date: str | None = None,
+    lookback_open_days: int | None = None,
+    target_start_biz_date: str | None = None,
 ) -> dict[str, object]:
     if task_name == "daily_sync":
         return run_daily_sync(settings)
@@ -40,6 +44,8 @@ def run_service_task(
             settings,
             start_biz_date=start_biz_date,
             end_biz_date=end_biz_date,
+            lookback_open_days=lookback_open_days,
+            target_start_biz_date=target_start_biz_date,
         )
     if task_name == "daily_screener":
         return run_daily_screener(settings, snapshot_id=snapshot_id)
@@ -64,14 +70,40 @@ def run_history_backfill(
     *,
     start_biz_date: str | None,
     end_biz_date: str | None,
+    lookback_open_days: int | None = None,
+    target_start_biz_date: str | None = None,
 ) -> dict[str, object]:
-    if start_biz_date is None or end_biz_date is None:
-        raise ValueError("history_backfill requires start_biz_date and end_biz_date")
+    if (start_biz_date is None) != (end_biz_date is None):
+        raise ValueError("history_backfill requires start_biz_date and end_biz_date together")
+    if lookback_open_days is not None and target_start_biz_date is not None:
+        raise ValueError(
+            "history_backfill cannot combine lookback_open_days with target_start_biz_date"
+        )
+    if start_biz_date is None and end_biz_date is None:
+        if lookback_open_days is not None:
+            target_window = resolve_source_backfill_window(
+                settings,
+                lookback_open_days=lookback_open_days,
+            )
+            start_biz_date = str(target_window["start_biz_date"])
+            end_biz_date = str(target_window["end_biz_date"])
+        elif target_start_biz_date is not None:
+            target_window = resolve_source_backfill_window_to_start_date(
+                settings,
+                target_start_biz_date=target_start_biz_date,
+            )
+            start_biz_date = str(target_window["start_biz_date"])
+            end_biz_date = str(target_window["end_biz_date"])
+        else:
+            raise ValueError(
+                "history_backfill requires start_biz_date/end_biz_date, "
+                "lookback_open_days, or target_start_biz_date"
+            )
 
     backfill_summary = backfill_market_data(
         settings,
-        start_biz_date=start_biz_date,
-        end_biz_date=end_biz_date,
+        start_biz_date=str(start_biz_date),
+        end_biz_date=str(end_biz_date),
     )
 
     completed_snapshots: list[dict[str, object]] = []
@@ -99,6 +131,8 @@ def run_history_backfill(
         "backfill": {
             **backfill_summary,
             "completed_snapshots": completed_snapshots,
+            "lookback_open_days": lookback_open_days,
+            "target_start_biz_date": target_start_biz_date,
         },
     }
 

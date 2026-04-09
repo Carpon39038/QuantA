@@ -544,6 +544,67 @@ def list_source_biz_dates(
     )
 
 
+def resolve_source_backfill_window(
+    settings: AppSettings,
+    *,
+    lookback_open_days: int,
+    end_biz_date: str | None = None,
+) -> dict[str, object]:
+    if lookback_open_days <= 0:
+        raise ValueError("lookback_open_days must be positive")
+
+    resolved_end_biz_date = end_biz_date or latest_source_biz_date(settings)
+    resolved_end_date = datetime.fromisoformat(resolved_end_biz_date).date()
+    probe_days = max(lookback_open_days * 3, 14)
+
+    while True:
+        probe_start_biz_date = (resolved_end_date - timedelta(days=probe_days)).isoformat()
+        open_biz_dates = list_source_biz_dates(
+            settings,
+            start_biz_date=probe_start_biz_date,
+            end_biz_date=resolved_end_biz_date,
+        )
+        if len(open_biz_dates) >= lookback_open_days:
+            target_open_biz_dates = open_biz_dates[-lookback_open_days:]
+            return {
+                "start_biz_date": target_open_biz_dates[0],
+                "end_biz_date": target_open_biz_dates[-1],
+                "target_open_biz_dates": target_open_biz_dates,
+                "lookback_open_days": lookback_open_days,
+            }
+        if probe_days >= 3650:
+            raise ValueError(
+                "Unable to resolve sufficient open biz dates for "
+                f"lookback_open_days={lookback_open_days}"
+            )
+        probe_days *= 2
+
+
+def resolve_source_backfill_window_to_start_date(
+    settings: AppSettings,
+    *,
+    target_start_biz_date: str,
+    end_biz_date: str | None = None,
+) -> dict[str, object]:
+    resolved_end_biz_date = end_biz_date or latest_source_biz_date(settings)
+    open_biz_dates = list_source_biz_dates(
+        settings,
+        start_biz_date=target_start_biz_date,
+        end_biz_date=resolved_end_biz_date,
+    )
+    if not open_biz_dates:
+        raise ValueError(
+            "Unable to resolve open biz dates between "
+            f"{target_start_biz_date} and {resolved_end_biz_date}"
+        )
+    return {
+        "start_biz_date": open_biz_dates[0],
+        "end_biz_date": open_biz_dates[-1],
+        "target_open_biz_dates": open_biz_dates,
+        "target_start_biz_date": target_start_biz_date,
+    }
+
+
 def _consume_simulated_source_failure(
     settings: AppSettings,
     *,
@@ -983,6 +1044,9 @@ def _build_corporate_action_check(
     unchanged_factor_count = 0
     boundary_gap_count = 0
     out_of_coverage_count = 0
+    coverage_start_biz_date = None
+    coverage_end_biz_date = None
+    nearest_out_of_coverage_event_date = None
     samples: list[dict[str, object]] = []
 
     for (
@@ -1001,9 +1065,18 @@ def _build_corporate_action_check(
         event_date = str(ex_date or trade_date)
         coverage_start = str(min_trade_date) if min_trade_date is not None else None
         coverage_end = str(max_trade_date) if max_trade_date is not None else None
+        if coverage_start_biz_date is None and coverage_start is not None:
+            coverage_start_biz_date = coverage_start
+        if coverage_end_biz_date is None and coverage_end is not None:
+            coverage_end_biz_date = coverage_end
 
         if coverage_start is None or coverage_end is None or event_date < coverage_start:
             out_of_coverage_count += 1
+            if (
+                nearest_out_of_coverage_event_date is None
+                or event_date > nearest_out_of_coverage_event_date
+            ):
+                nearest_out_of_coverage_event_date = event_date
             continue
         if event_date > coverage_end:
             continue
@@ -1060,6 +1133,9 @@ def _build_corporate_action_check(
             ),
             "checked_action_count": 0,
             "out_of_coverage_count": out_of_coverage_count,
+            "coverage_start_biz_date": coverage_start_biz_date,
+            "coverage_end_biz_date": coverage_end_biz_date,
+            "nearest_out_of_coverage_event_date": nearest_out_of_coverage_event_date,
         }
 
     status = "WARN" if unchanged_factor_count else "OK"
@@ -1073,6 +1149,8 @@ def _build_corporate_action_check(
         message += f"; boundary gaps {boundary_gap_count}"
     if out_of_coverage_count:
         message += f"; out_of_coverage {out_of_coverage_count}"
+    if nearest_out_of_coverage_event_date:
+        message += f"; nearest_out_of_coverage_event_date {nearest_out_of_coverage_event_date}"
     return {
         "status": status,
         "message": message,
@@ -1081,6 +1159,9 @@ def _build_corporate_action_check(
         "unchanged_factor_count": unchanged_factor_count,
         "boundary_gap_count": boundary_gap_count,
         "out_of_coverage_count": out_of_coverage_count,
+        "coverage_start_biz_date": coverage_start_biz_date,
+        "coverage_end_biz_date": coverage_end_biz_date,
+        "nearest_out_of_coverage_event_date": nearest_out_of_coverage_event_date,
         "samples": samples,
     }
 
@@ -1365,18 +1446,63 @@ def main() -> int:
     parser.add_argument("--biz-date", default=None, help="Optional target biz_date in YYYY-MM-DD format.")
     parser.add_argument("--start-biz-date", default=None, help="Optional backfill start biz_date in YYYY-MM-DD format.")
     parser.add_argument("--end-biz-date", default=None, help="Optional backfill end biz_date in YYYY-MM-DD format.")
+    parser.add_argument(
+        "--lookback-open-days",
+        type=int,
+        default=None,
+        help="Optional rolling backfill window resolved from the latest source biz_date.",
+    )
+    parser.add_argument(
+        "--target-start-biz-date",
+        default=None,
+        help="Optional target start biz_date for a rolling backfill window resolved through open trade days.",
+    )
     parser.add_argument("--print-summary", action="store_true", help="Print a short sync summary.")
     args = parser.parse_args()
 
     settings = load_settings()
     if bool(args.start_biz_date) != bool(args.end_biz_date):
         raise ValueError("--start-biz-date and --end-biz-date must be provided together")
+    if args.lookback_open_days is not None and (args.start_biz_date or args.end_biz_date):
+        raise ValueError("--lookback-open-days cannot be combined with explicit backfill dates")
+    if args.target_start_biz_date is not None and (args.start_biz_date or args.end_biz_date):
+        raise ValueError("--target-start-biz-date cannot be combined with explicit backfill dates")
+    if args.lookback_open_days is not None and args.target_start_biz_date is not None:
+        raise ValueError("--lookback-open-days cannot be combined with --target-start-biz-date")
 
     if args.start_biz_date and args.end_biz_date:
         summary = backfill_market_data(
             settings,
             start_biz_date=args.start_biz_date,
             end_biz_date=args.end_biz_date,
+        )
+        if args.print_summary:
+            _print_backfill_summary(summary)
+        return 0
+
+    if args.lookback_open_days is not None:
+        target_window = resolve_source_backfill_window(
+            settings,
+            lookback_open_days=args.lookback_open_days,
+        )
+        summary = backfill_market_data(
+            settings,
+            start_biz_date=str(target_window["start_biz_date"]),
+            end_biz_date=str(target_window["end_biz_date"]),
+        )
+        if args.print_summary:
+            _print_backfill_summary(summary)
+        return 0
+
+    if args.target_start_biz_date is not None:
+        target_window = resolve_source_backfill_window_to_start_date(
+            settings,
+            target_start_biz_date=args.target_start_biz_date,
+        )
+        summary = backfill_market_data(
+            settings,
+            start_biz_date=str(target_window["start_biz_date"]),
+            end_biz_date=str(target_window["end_biz_date"]),
         )
         if args.print_summary:
             _print_backfill_summary(summary)
