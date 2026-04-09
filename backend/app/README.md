@@ -20,7 +20,9 @@
 3. `python3 -m backend.app.domains.tasking.worker --once --task service`
 4. `python3 -m backend.app.domains.tasking.worker --once --task backtest`
 5. `python3 -m backend.app.domains.tasking.scheduler --max-ticks 6`
-6. `python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --iterations 3`
+6. `pnpm run pipeline:once`
+7. `pnpm run pipeline:daemon`
+8. `python3 -m backend.app.domains.tasking.scheduler --daemon --auto-pipeline --iterations 3 --stream-ticks --stop-on-error`
 7. `python3 -m backend.app.domains.market_data.bootstrap --print-summary`
 8. `python3 -m backend.app.domains.market_data.sync --print-summary`
 9. `python3 -m backend.app.domains.market_data.sync --lookback-open-days 20 --print-summary`
@@ -45,6 +47,8 @@
 7. `daily_sync` 已改成真正的 source-backed sync：会先写 `raw_snapshot` 与 `artifact_publish(status=BUILDING)`，再由 `daily_screener`、`daily_backtest` 逐步补齐产物并最终发布为 `READY`。
 8. service/backtest durable queue 现已带 `retry_count`、`max_retries`、`next_attempt_at` 与 `last_error`，worker 会执行 retry/backoff，并在耗尽时写本地 alerts JSONL。
 9. 已提供最小 `domains.tasking.scheduler` resident loop，可轮询 auto pipeline，并通过 `scripts/pipeline_smoke.py` 覆盖成功路径与 retry 路径。
+9.1. 正式的本机常驻入口是 `pnpm run pipeline:daemon`：它会在一个进程里执行 scheduler tick、service queue worker 和 backtest queue worker，并把每个 resident tick 输出成 JSONL。操作口径见 `docs/OPERATIONS.md`。
+9.2. `pnpm run pipeline:canary` 会使用隔离 runtime 演练 resident scheduler；2026-04-09 已用 Tushare live token 在 `core_research_12` 上跑通 canary，daemon 自动 catch-up 到 `2026-04-09`，health 为 `ok`，alerts 为 `0`。
 10. 当前正式数据源口径已经收敛为 `Tushare Pro 5000积分档 + 巨潮资讯/上交所/深交所 + AKShare/BaoStock补充层`。
 11. `Tushare Pro 5000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
 12. 全市场季度财务过滤现在回到 v1.0 默认前提，可以直接进入正式选股主链，而不必先降级成“候选池后拉取”。

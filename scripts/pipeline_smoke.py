@@ -118,9 +118,50 @@ def verify_retry_case() -> None:
             assert alerts_content == ""
 
 
+def verify_resident_scheduler_stream_case() -> None:
+    with tempfile.TemporaryDirectory(prefix="quanta-pipeline-resident-") as temp_dir:
+        runtime_dir = Path(temp_dir)
+        env = build_env(runtime_dir)
+        env["QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS"] = "0"
+        bootstrap_runtime(env)
+
+        scheduler_output = run_checked(
+            [
+                "python3",
+                "-m",
+                "backend.app.domains.tasking.scheduler",
+                "--daemon",
+                "--auto-pipeline",
+                "--iterations",
+                "3",
+                "--stream-ticks",
+                "--stop-on-error",
+            ],
+            env,
+        )
+        stream_events = [
+            json.loads(line)
+            for line in scheduler_output.splitlines()
+            if line.startswith("{")
+        ]
+        assert [event["event"] for event in stream_events[:-1]] == [
+            "scheduler_tick",
+            "scheduler_tick",
+            "scheduler_tick",
+        ]
+        assert stream_events[-1]["event"] == "scheduler_loop_finished"
+        assert stream_events[-1]["iterations"] == 3
+        assert any(
+            event["service_worker"]["processed"] >= 1
+            for event in stream_events
+            if event["event"] == "scheduler_tick"
+        )
+
+
 def main() -> int:
     verify_scheduler_success_case()
     verify_retry_case()
+    verify_resident_scheduler_stream_case()
     print("[pipeline-smoke] scheduler and retry paths are healthy")
     return 0
 

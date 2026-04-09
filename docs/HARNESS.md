@@ -96,4 +96,6 @@
 8. M7
    把 source-backed sync、retry/backoff、失败告警和 resident scheduler 接进这条流水线。
 9. M8
+   用 `docs/OPERATIONS.md`、`pnpm run pipeline:daemon` 和 health / alerts / runtime API，收敛第一版无人值守运行口径。
+10. M9
    当产品里需要 agent 能力时，再补运行时 harness。

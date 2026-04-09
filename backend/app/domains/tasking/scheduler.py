@@ -19,6 +19,7 @@ from backend.app.domains.tasking.worker import (
     process_service_queue,
 )
 from backend.app.shared.providers.duckdb import connect_duckdb
+from backend.app.shared.telemetry.alerts import emit_alert
 
 
 PIPELINE_TASK_ORDER = (
@@ -150,13 +151,42 @@ def run_scheduler_loop(
     *,
     auto_pipeline: bool,
     iterations: int | None,
+    stream_ticks: bool = False,
+    continue_on_error: bool = False,
 ) -> dict[str, object]:
     summaries: list[dict[str, object]] = []
     loop_count = 0
+    last_error_signature: str | None = None
     while iterations is None or loop_count < iterations:
-        tick_summary = run_scheduler_tick(settings, auto_pipeline=auto_pipeline)
-        summaries.append(tick_summary)
+        try:
+            tick_summary = run_scheduler_tick(settings, auto_pipeline=auto_pipeline)
+            last_error_signature = None
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            tick_summary = _build_scheduler_loop_error_tick(exc)
+            error_signature = f"{exc.__class__.__name__}:{exc}"
+            if error_signature != last_error_signature:
+                emit_alert(
+                    settings,
+                    alert_type="scheduler_loop_failure",
+                    severity="error",
+                    message="Scheduler resident loop tick failed",
+                    detail=tick_summary["error"],
+                )
+                last_error_signature = error_signature
+
         loop_count += 1
+        if iterations is not None:
+            summaries.append(tick_summary)
+        if stream_ticks:
+            _print_stream_event(
+                {
+                    "event": "scheduler_tick",
+                    "tick_no": loop_count,
+                    **tick_summary,
+                }
+            )
         if iterations is None:
             time.sleep(settings.scheduler_poll_interval_seconds)
         elif loop_count < iterations:
@@ -166,6 +196,26 @@ def run_scheduler_loop(
         "iterations": loop_count,
         "ticks": summaries,
     }
+
+
+def _build_scheduler_loop_error_tick(exc: Exception) -> dict[str, object]:
+    return {
+        "pipeline": {
+            "enqueued": None,
+            "reason": "scheduler_loop_error",
+        },
+        "service_worker": None,
+        "backtest_worker": None,
+        "settled": False,
+        "error": {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+        },
+    }
+
+
+def _print_stream_event(event: dict[str, object]) -> None:
+    print(json.dumps(event, ensure_ascii=False, sort_keys=True), flush=True)
 
 
 def is_pipeline_settled(settings: AppSettings) -> bool:
@@ -399,9 +449,20 @@ def main() -> int:
         default=6,
         help="Maximum ticks to use for the non-daemon daily pipeline run.",
     )
+    parser.add_argument(
+        "--stream-ticks",
+        action="store_true",
+        help="For --daemon, print each scheduler tick as a single JSONL event.",
+    )
+    parser.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="For --daemon, exit on tick-level errors instead of alerting and polling again.",
+    )
     args = parser.parse_args()
 
     settings = load_settings()
+    stream_ticks = bool(args.stream_ticks or (args.daemon and args.iterations is None))
     if args.enqueue_only:
         summary = enqueue_next_pipeline_task(settings)
     elif args.daemon:
@@ -409,11 +470,21 @@ def main() -> int:
             settings,
             auto_pipeline=args.auto_pipeline,
             iterations=args.iterations,
+            stream_ticks=stream_ticks,
+            continue_on_error=not args.stop_on_error,
         )
     else:
         summary = run_daily_pipeline(settings, max_ticks=args.max_ticks)
 
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if args.daemon and stream_ticks:
+        _print_stream_event(
+            {
+                "event": "scheduler_loop_finished",
+                **summary,
+            }
+        )
+    else:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
 
