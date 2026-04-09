@@ -41,8 +41,18 @@
    - `boundary_gap_count = 0`
    - `nearest_out_of_coverage_event_date = 2026-01-16`
 4. 这说明显式 target-date backfill 不只是“能补到指定日期”，而是已经把企业行为 reconciliation 从 `40 open days -> checked=3/aligned=3` 继续推进到了 `50 open days -> checked=5/aligned=5/boundary_gap=0`。
+5. 2026-04-09 继续运行 `QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2026-01-15 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 python3 scripts/tushare_live_backfill_smoke.py`，返回：
+   - `history_coverage.open_day_count = 53`
+   - `history_coverage.start_biz_date = 2026-01-15`
+   - `history_coverage.end_biz_date = 2026-04-08`
+   - `corporate_action_check.status = OK`
+   - `checked_action_count = 6`
+   - `aligned_action_count = 6`
+   - `boundary_gap_count = 0`
+   - `nearest_out_of_coverage_event_date = 2025-12-19`
+6. 这次结果把先前 `2026-01-16` 缺口吃进覆盖内，并且没有新增边界缺口；下一次推荐起点应继续回退到 `2025-12-19` 前一个 open day。
 
 ## Next
 
-1. 继续把覆盖从当前 `2026-01-20` 再往 `2026-01-16` 之前推进，扩大 `corporate_action` 的 in-coverage 比例。
+1. 继续把覆盖从当前 `2026-01-15` 再往 `2025-12-19` 之前推进，扩大 `corporate_action` 的 in-coverage 比例。
 2. 开始评估是否要把 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 暴露到正式 live runtime 配置，而不是只在 smoke/运维回补里手工使用。

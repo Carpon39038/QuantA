@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import types
+from unittest.mock import patch
 
 import duckdb
 
@@ -22,6 +23,10 @@ from backend.app.domains.market_data.sync import (
     backfill_market_data,
     resolve_source_backfill_window,
     resolve_source_backfill_window_to_start_date,
+)
+from backend.app.domains.tasking.scheduler import (
+    _history_backfill_target_open_days,
+    _resolve_history_backfill_target_start_biz_date,
 )
 
 
@@ -497,6 +502,71 @@ def main() -> int:
                 == "OK"
             )
 
+        with tempfile.TemporaryDirectory(prefix="quanta-backfill-auto-smoke-") as temp_dir:
+            os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir
+            os.environ["QUANTA_DUCKDB_PATH"] = str(Path(temp_dir) / "duckdb" / "quanta.duckdb")
+            os.environ["QUANTA_SOURCE_PROVIDER"] = "tushare"
+            os.environ["QUANTA_SOURCE_UNIVERSE"] = "core_research_12"
+            os.environ["QUANTA_DISCLOSURE_PROVIDER"] = "none"
+            os.environ["QUANTA_SOURCE_VALIDATION_PROVIDERS"] = "none"
+            os.environ["QUANTA_TUSHARE_TOKEN"] = "demo-token"
+            os.environ["QUANTA_TUSHARE_EXCHANGE"] = "SSE"
+            os.environ["QUANTA_SOURCE_SYMBOLS"] = "300750.SZ,002475.SZ"
+            os.environ["QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE"] = "auto"
+            os.environ["QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS"] = "7"
+
+            settings = load_settings()
+            latest_ready_snapshot = {
+                "snapshot_id": "snapshot_2026-04-02_ready_001",
+                "biz_date": "2026-04-02",
+                "raw_snapshot_id": "raw_snapshot_2026-04-02_close_001",
+            }
+            with patch(
+                "backend.app.domains.tasking.scheduler.load_system_health",
+                return_value={
+                    "history_coverage": {
+                        "recommended_target_start_biz_date": "2026-03-31",
+                    }
+                },
+            ):
+                resolved_target_start_biz_date = (
+                    _resolve_history_backfill_target_start_biz_date(
+                        settings,
+                        latest_ready_snapshot=latest_ready_snapshot,
+                    )
+                )
+            assert resolved_target_start_biz_date == "2026-03-31"
+            assert (
+                _history_backfill_target_open_days(
+                    settings,
+                    resolved_target_start_biz_date=resolved_target_start_biz_date,
+                )
+                is None
+            )
+
+            with patch(
+                "backend.app.domains.tasking.scheduler.load_system_health",
+                return_value={
+                    "history_coverage": {
+                        "recommended_target_start_biz_date": None,
+                    }
+                },
+            ):
+                unresolved_target_start_biz_date = (
+                    _resolve_history_backfill_target_start_biz_date(
+                        settings,
+                        latest_ready_snapshot=latest_ready_snapshot,
+                    )
+                )
+            assert unresolved_target_start_biz_date is None
+            assert (
+                _history_backfill_target_open_days(
+                    settings,
+                    resolved_target_start_biz_date=unresolved_target_start_biz_date,
+                )
+                == 7
+            )
+
         print("[market-data-backfill-smoke] backfill path is healthy")
         return 0
     finally:
@@ -528,6 +598,8 @@ def _env_keys() -> tuple[str, ...]:
         "QUANTA_TUSHARE_TOKEN",
         "QUANTA_TUSHARE_EXCHANGE",
         "QUANTA_SOURCE_SYMBOLS",
+        "QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE",
+        "QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS",
     )
 
 

@@ -252,6 +252,20 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                     return
 
             if parsed.path == "/api/v1/runtime":
+                resolved_target_start_biz_date = (
+                    container.settings.history_backfill_target_start_biz_date
+                )
+                if (
+                    resolved_target_start_biz_date is not None
+                    and resolved_target_start_biz_date.lower() == "auto"
+                ):
+                    try:
+                        resolved_target_start_biz_date = container.system_health_payload().get(
+                            "history_coverage",
+                            {},
+                        ).get("recommended_target_start_biz_date")
+                    except LookupError:
+                        resolved_target_start_biz_date = None
                 self._send_json(
                     200,
                     {
@@ -270,6 +284,7 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         ),
                         "history_backfill_target_open_days": container.settings.history_backfill_target_open_days,
                         "history_backfill_target_start_biz_date": container.settings.history_backfill_target_start_biz_date,
+                        "resolved_history_backfill_target_start_biz_date": resolved_target_start_biz_date,
                     },
                 )
                 return

@@ -5,6 +5,7 @@ import json
 import time
 
 from backend.app.app_wiring.settings import AppSettings, load_settings
+from backend.app.domains.market_data.repo import load_system_health
 from backend.app.domains.market_data.sync import (
     latest_source_biz_date,
     load_latest_building_snapshot,
@@ -56,30 +57,42 @@ def enqueue_next_pipeline_task(settings: AppSettings) -> dict[str, object]:
 
     source_biz_date = latest_source_biz_date(settings)
     latest_ready_snapshot = _load_latest_ready_snapshot_meta(settings)
+    resolved_target_start_biz_date = _resolve_history_backfill_target_start_biz_date(
+        settings,
+        latest_ready_snapshot=latest_ready_snapshot,
+    )
     if latest_ready_snapshot is not None and source_biz_date <= str(latest_ready_snapshot["biz_date"]):
         if _history_backfill_target_needs_extension(
             settings,
             latest_ready_snapshot=latest_ready_snapshot,
             source_biz_date=source_biz_date,
+            resolved_target_start_biz_date=resolved_target_start_biz_date,
         ):
             return {
                 "enqueued": enqueue_service_task(
                     settings,
                     task_name="history_backfill",
-                    lookback_open_days=_history_backfill_target_open_days(settings),
-                    target_start_biz_date=settings.history_backfill_target_start_biz_date,
+                    lookback_open_days=_history_backfill_target_open_days(
+                        settings,
+                        resolved_target_start_biz_date=resolved_target_start_biz_date,
+                    ),
+                    target_start_biz_date=resolved_target_start_biz_date,
                 )
             }
         return {"enqueued": None, "reason": "source_not_newer"}
 
     if latest_ready_snapshot is not None:
-        if settings.history_backfill_target_open_days > 0:
+        lookback_open_days = _history_backfill_target_open_days(
+            settings,
+            resolved_target_start_biz_date=resolved_target_start_biz_date,
+        )
+        if lookback_open_days is not None or resolved_target_start_biz_date is not None:
             return {
                 "enqueued": enqueue_service_task(
                     settings,
                     task_name="history_backfill",
-                    lookback_open_days=_history_backfill_target_open_days(settings),
-                    target_start_biz_date=settings.history_backfill_target_start_biz_date,
+                    lookback_open_days=lookback_open_days,
+                    target_start_biz_date=resolved_target_start_biz_date,
                 )
             }
         return {"enqueued": enqueue_service_task(settings, task_name="history_backfill")}
@@ -167,10 +180,15 @@ def is_pipeline_settled(settings: AppSettings) -> bool:
     source_biz_date = latest_source_biz_date(settings)
     if source_biz_date > str(latest_ready_snapshot["biz_date"]):
         return False
+    resolved_target_start_biz_date = _resolve_history_backfill_target_start_biz_date(
+        settings,
+        latest_ready_snapshot=latest_ready_snapshot,
+    )
     if _history_backfill_target_needs_extension(
         settings,
         latest_ready_snapshot=latest_ready_snapshot,
         source_biz_date=source_biz_date,
+        resolved_target_start_biz_date=resolved_target_start_biz_date,
     ):
         return False
     return True
@@ -232,10 +250,15 @@ def _history_backfill_target_needs_extension(
     *,
     latest_ready_snapshot: dict[str, object],
     source_biz_date: str,
+    resolved_target_start_biz_date: str | None = None,
 ) -> bool:
     target_open_days = settings.history_backfill_target_open_days
-    target_start_biz_date = settings.history_backfill_target_start_biz_date
-    if target_open_days <= 0 and target_start_biz_date is None:
+    configured_target_start_biz_date = settings.history_backfill_target_start_biz_date
+    auto_target_mode = (
+        configured_target_start_biz_date is not None
+        and configured_target_start_biz_date.lower() == "auto"
+    )
+    if target_open_days <= 0 and configured_target_start_biz_date is None:
         return False
 
     coverage = _load_snapshot_history_coverage(
@@ -243,14 +266,20 @@ def _history_backfill_target_needs_extension(
         snapshot_id=str(latest_ready_snapshot["snapshot_id"]),
     )
     coverage_start = str(coverage["start_biz_date"]) if coverage["start_biz_date"] is not None else None
-    if target_start_biz_date is not None:
+    effective_target_start_biz_date = resolved_target_start_biz_date
+    if (
+        effective_target_start_biz_date is None
+        and configured_target_start_biz_date is not None
+        and not auto_target_mode
+    ):
+        effective_target_start_biz_date = configured_target_start_biz_date
+    if effective_target_start_biz_date is not None:
         target_window = resolve_source_backfill_window_to_start_date(
             settings,
-            target_start_biz_date=target_start_biz_date,
+            target_start_biz_date=effective_target_start_biz_date,
             end_biz_date=source_biz_date,
         )
-        if coverage_start is None or coverage_start > str(target_window["start_biz_date"]):
-            return True
+        return coverage_start is None or coverage_start > str(target_window["start_biz_date"])
 
     if target_open_days > 0:
         target_window = resolve_source_backfill_window(
@@ -266,14 +295,50 @@ def _history_backfill_target_needs_extension(
     return False
 
 
-def _history_backfill_target_open_days(settings: AppSettings) -> int | None:
-    if settings.history_backfill_target_start_biz_date is not None:
+def _history_backfill_target_open_days(
+    settings: AppSettings,
+    *,
+    resolved_target_start_biz_date: str | None = None,
+) -> int | None:
+    configured_target_start_biz_date = settings.history_backfill_target_start_biz_date
+    if (
+        configured_target_start_biz_date is not None
+        and (
+            configured_target_start_biz_date.lower() != "auto"
+            or resolved_target_start_biz_date is not None
+        )
+    ):
         return None
     return (
         settings.history_backfill_target_open_days
         if settings.history_backfill_target_open_days > 0
         else None
     )
+
+
+def _resolve_history_backfill_target_start_biz_date(
+    settings: AppSettings,
+    *,
+    latest_ready_snapshot: dict[str, object] | None,
+) -> str | None:
+    configured_target_start_biz_date = settings.history_backfill_target_start_biz_date
+    if configured_target_start_biz_date is None:
+        return None
+    if configured_target_start_biz_date.lower() != "auto":
+        return configured_target_start_biz_date
+    if latest_ready_snapshot is None:
+        return None
+    try:
+        health_payload = load_system_health(settings)
+    except LookupError:
+        return None
+    history_coverage = health_payload.get("history_coverage", {})
+    recommended_target_start_biz_date = history_coverage.get(
+        "recommended_target_start_biz_date"
+    )
+    if recommended_target_start_biz_date in (None, ""):
+        return None
+    return str(recommended_target_start_biz_date)
 
 
 def _load_snapshot_history_coverage(

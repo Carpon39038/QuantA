@@ -31,14 +31,14 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 6. `market_data.sync --start-biz-date/--end-biz-date` 已支持最小历史回补，并默认跳过已存在的 `biz_date`，避免重复生成同日 source-backed 快照。
 7. scheduler 在 source provider 明显领先于最新 READY snapshot 时，会优先 enqueue `history_backfill`，并由 service worker 把回补出的历史 snapshot 继续推进到 `READY`，避免遗留多条悬空 `BUILDING` 快照。
 8. `history_backfill` 现在同时支持 `lookback_open_days` 与 `target_start_biz_date`；`market_data.sync --lookback-open-days N`、`market_data.sync --target-start-biz-date YYYY-MM-DD`、`POST /api/v1/tasks/history-backfill/run` 和 queue/worker 都可以按最新 source biz date 自动解析滚动回补窗口，或直接把覆盖推进到指定起始日期。
-9. 当 `QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS > 0` 或 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 被设置时，scheduler 即使在 source 已追平后，也会把“历史覆盖不足”视为未 settled，并继续 enqueue `history_backfill` 扩最新 READY snapshot 的历史窗口。
+9. 当 `QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS > 0` 或 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 被设置时，scheduler 即使在 source 已追平后，也会把“历史覆盖不足”视为未 settled，并继续 enqueue `history_backfill` 扩最新 READY snapshot 的历史窗口；其中 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE=auto` 会优先消费最新 `history_coverage.recommended_target_start_biz_date`，只有 recommendation 缺失时才回退到 `target_open_days`。
 10. 官方披露现已作为独立 sidecar 接入 `official_disclosure_item`；`fixture_json` 开发链走本地 fixture，live 环境默认走 CNInfo 官方检索页与 stock lookup JSON，不再把披露信息混入 canonical 日线 provider 本体。
 11. `tushare` canonical sync 现在会在白天自动回退到最近一个真正有日线的交易日，而不是只依据 `trade_cal` 判断“今天开市”后直接失败。
 12. `shadow_validation` 已接入 `akshare` 与 `baostock` 两条补充源，会把 `open/high/low/close/pre_close/volume/amount/adj_factor` 的逐股对比结果写入 `source_watermark_json`，并经 `/api/v1/snapshot/latest` 与 `/api/v1/system/health` 暴露。
 13. canonical source 现在还会在 sync 时执行 `adj_factor` 覆盖率、板块涨跌停规则、停牌标记一致性，以及 `corporate_action_item + price_series_daily` 的企业行为 reconciliation 自检；若补充源降级或 canonical quality check 报警，会直接写 runtime-local alerts。
 14. 企业行为 sidecar 现已作为独立 `corporate_action_item` 接入：`tushare.dividend` 会先按 `knowledge_date <= biz_date` 做 as-of 过滤，再落到 snapshot 绑定表中，避免未来已知的分红送配事件泄漏进历史回测语义。
-15. 对落在当前价格历史覆盖范围内的企业行为，reconciliation 会检查事件日前后 `adj_factor` 是否发生变化；若事件日早于当前覆盖窗口，则明确记为 `out_of_coverage`，并额外暴露 `coverage_start_biz_date/coverage_end_biz_date/nearest_out_of_coverage_event_date` 帮助继续扩深回补窗口。2026-04-08 的 live 验证里，这条链已先在 40 个 open days 的覆盖下首次进入非零 `checked/aligned`，随后再通过显式 `target_start_biz_date` 把覆盖推进到 `2026-01-20`，把企业行为校验提升到 `checked=5/aligned=5/boundary_gap=0`。
-16. `/api/v1/system/health` 现在会返回最新 READY snapshot 的 `history_coverage`，其中还包含 `recommended_target_start_biz_date`、`recommendation_reason` 与 `recommendation_anchor_biz_date`；workbench 当前也会直接读取 `/api/v1/system/alerts` 并展示最近 alerts、provider incident 摘要和建议的下一次回补起点，降级信号与补数建议不再只存在本地 JSONL 文件或终端输出里。
+15. 对落在当前价格历史覆盖范围内的企业行为，reconciliation 会检查事件日前后 `adj_factor` 是否发生变化；若事件日早于当前覆盖窗口，则明确记为 `out_of_coverage`，并额外暴露 `coverage_start_biz_date/coverage_end_biz_date/nearest_out_of_coverage_event_date` 帮助继续扩深回补窗口。2026-04-08 的 live 验证里，这条链已先在 40 个 open days 的覆盖下首次进入非零 `checked/aligned`，随后再通过显式 `target_start_biz_date` 把覆盖推进到 `2026-01-20`，把企业行为校验提升到 `checked=5/aligned=5/boundary_gap=0`；2026-04-09 继续推进到 `2026-01-15` 后，live 结果已到 `checked=6/aligned=6/boundary_gap=0`，最近未覆盖事件前移到 `2025-12-19`。
+16. `/api/v1/system/health` 现在会返回最新 READY snapshot 的 `history_coverage`，其中还包含 `recommended_target_start_biz_date`、`recommendation_reason` 与 `recommendation_anchor_biz_date`；`/api/v1/runtime` 还会额外暴露 `resolved_history_backfill_target_start_biz_date`，帮助确认 `auto` 当前实际采用的回补起点。workbench 当前也会直接读取 `/api/v1/system/alerts` 并展示最近 alerts、provider incident 摘要和建议的下一次回补起点，降级信号与补数建议不再只存在本地 JSONL 文件或终端输出里。
 
 ## Known Risks
 

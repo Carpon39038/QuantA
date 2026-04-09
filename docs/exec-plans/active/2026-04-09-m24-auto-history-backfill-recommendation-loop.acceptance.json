@@ -1,0 +1,34 @@
+{
+  "plan_id": "2026-04-09-m24-auto-history-backfill-recommendation-loop",
+  "title": "M24 Auto History Backfill Recommendation Loop",
+  "items": [
+    {
+      "id": "scheduler-auto-recommendation",
+      "title": "Scheduler consumes recommendation in auto mode",
+      "description": "When QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE=auto, the scheduler resolves the latest health recommendation into a concrete target_start_biz_date.",
+      "verification": [
+        "env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/tasking/scheduler.py",
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "auto-fallback-to-open-days",
+      "title": "Auto mode falls back to target_open_days when needed",
+      "description": "If no recommendation is available, auto mode falls back to QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS instead of stalling the scheduler.",
+      "verification": [
+        "python3 scripts/market_data_backfill_smoke.py"
+      ],
+      "passes": true
+    },
+    {
+      "id": "runtime-shows-resolved-target",
+      "title": "Runtime exposes the resolved auto target",
+      "description": "The runtime payload includes resolved_history_backfill_target_start_biz_date so operators can see what auto currently resolved to.",
+      "verification": [
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    }
+  ]
+}

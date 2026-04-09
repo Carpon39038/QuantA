@@ -23,5 +23,5 @@
 
 ## Next
 
-1. 继续把 recommendation 从可见信号推进成正式 live runtime 的自动补数策略。
+1. 继续把 recommendation 从可见信号推进成正式 live runtime 的自动补数策略；该后续工作已转入 `2026-04-09-m24-auto-history-backfill-recommendation-loop`。
 2. 在更长窗口下继续验证企业行为长期回溯与复权基准核对。
