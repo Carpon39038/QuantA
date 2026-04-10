@@ -216,6 +216,34 @@ class FakeTusharePro:
             ]
         )
 
+    def index_daily(self, **kwargs) -> FakeFrame:
+        assert kwargs.get("trade_date") == "20260401"
+        return FakeFrame(
+            [
+                {
+                    "ts_code": "000001.SH",
+                    "trade_date": "20260401",
+                    "close": 3348.72,
+                    "pre_close": 3361.49,
+                    "pct_chg": -0.38,
+                },
+                {
+                    "ts_code": "399001.SZ",
+                    "trade_date": "20260401",
+                    "close": 10492.15,
+                    "pre_close": 10466.99,
+                    "pct_chg": 0.24,
+                },
+                {
+                    "ts_code": "399006.SZ",
+                    "trade_date": "20260401",
+                    "close": 2198.44,
+                    "pre_close": 2178.62,
+                    "pct_chg": 0.91,
+                },
+            ]
+        )
+
     def fina_indicator_vip(self, **kwargs) -> FakeFrame:
         period = kwargs.get("period")
         if period == "20260331":
@@ -360,10 +388,23 @@ def main() -> int:
         assert len(snapshot.stock_basic) == 2
         assert len(snapshot.daily_bars) == 2
         assert snapshot.trade_calendar["market_code"] == "CN-A"
+        assert snapshot.market_overview["trade_date"] == "2026-04-01"
         assert snapshot.market_overview["breadth"]["advancers"] == 2
         assert snapshot.market_overview["breadth"]["decliners"] == 0
+        assert len(snapshot.market_overview["indices"]) == 3
+        assert snapshot.market_overview["indices"][0]["name"] == "上证指数"
+        assert snapshot.market_overview["indices"][0]["close"] == 3348.72
+        assert snapshot.market_overview["indices"][0]["change_pct"] == -0.38
+        assert snapshot.market_overview["indices"][0]["commentary"] == "窄幅整理，情绪仍偏谨慎。"
         assert "north_money_million: 128.60" in snapshot.market_overview["highlights"]
+        assert "market_index_coverage: 3/3" in snapshot.market_overview["highlights"]
         assert snapshot.source_watermark["moneyflow_count"] == 2
+        assert snapshot.source_watermark["market_index_count"] == 3
+        assert snapshot.source_watermark["market_index_symbols"] == [
+            "000001.SH",
+            "399001.SZ",
+            "399006.SZ",
+        ]
         assert snapshot.source_watermark["top_list_count"] == 1
         assert snapshot.source_watermark["north_money_million"] == 128.6
         assert snapshot.source_watermark["financial_report_period"] == "2025-12-31"

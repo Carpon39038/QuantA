@@ -251,6 +251,37 @@ class FakeTusharePro:
             ]
         )
 
+    def index_daily(self, **kwargs) -> FakeFrame:
+        trade_date = str(kwargs.get("trade_date"))
+        if trade_date not in OPEN_DATES:
+            return FakeFrame([])
+        day_offset = OPEN_DATES.index(trade_date)
+        return FakeFrame(
+            [
+                {
+                    "ts_code": "000001.SH",
+                    "trade_date": trade_date,
+                    "close": 3300.0 + day_offset * 18.0,
+                    "pre_close": 3288.0 + day_offset * 18.0,
+                    "pct_chg": 0.36,
+                },
+                {
+                    "ts_code": "399001.SZ",
+                    "trade_date": trade_date,
+                    "close": 10350.0 + day_offset * 30.0,
+                    "pre_close": 10305.0 + day_offset * 30.0,
+                    "pct_chg": 0.44,
+                },
+                {
+                    "ts_code": "399006.SZ",
+                    "trade_date": trade_date,
+                    "close": 2180.0 + day_offset * 8.0,
+                    "pre_close": 2169.0 + day_offset * 8.0,
+                    "pct_chg": 0.51,
+                },
+            ]
+        )
+
     def dividend(self, **kwargs) -> FakeFrame:
         self.dividend_call_count += 1
         ts_code = str(kwargs.get("ts_code"))

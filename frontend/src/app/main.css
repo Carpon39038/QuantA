@@ -172,6 +172,7 @@ h3 {
   display: block;
   margin-top: 0.5rem;
   font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
 .status-strip {
@@ -249,6 +250,12 @@ h3 {
 .metric-card p,
 .task-card p {
   margin: 0;
+}
+
+.index-card-empty {
+  grid-column: 1 / -1;
+  border-style: dashed;
+  background: rgba(255, 250, 245, 0.68);
 }
 
 .delta-positive {

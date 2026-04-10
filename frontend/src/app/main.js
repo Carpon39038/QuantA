@@ -62,6 +62,13 @@ function formatAmount(value) {
   return numeric.toFixed(0);
 }
 
+function formatDateLabel(value) {
+  if (!value) {
+    return "--";
+  }
+  return String(value);
+}
+
 function createTag(text, isRisk = false) {
   const span = document.createElement("span");
   span.className = isRisk ? "pill pill-risk" : "pill";
@@ -211,23 +218,38 @@ function renderStatusStrip(
 }
 
 function renderMarketOverview(snapshotPayload) {
-  marketSummaryNode.textContent = snapshotPayload.market_overview.summary;
+  const marketOverview = snapshotPayload.market_overview ?? {};
+  const snapshotTradeDate = formatDateLabel(marketOverview.trade_date);
+  marketSummaryNode.textContent = `${marketOverview.summary ?? "--"} 当前显示 as-of ${snapshotTradeDate} 的 READY 快照。`;
   indexGridNode.innerHTML = "";
-  for (const index of snapshotPayload.market_overview.indices) {
+  const indices = Array.isArray(marketOverview.indices) ? marketOverview.indices : [];
+  if (!indices.length) {
     const card = document.createElement("article");
-    const deltaClass = index.change_pct >= 0 ? "delta-positive" : "delta-negative";
+    card.className = "index-card index-card-empty";
+    card.innerHTML = `
+      <p class="panel-kicker">指数卡片暂缺</p>
+      <strong>--</strong>
+      <p>当前 READY 快照日为 ${snapshotTradeDate}</p>
+      <p>结构化源未返回指数概览，页面不会把它伪装成今天实时行情。</p>
+    `;
+    indexGridNode.appendChild(card);
+  }
+  for (const index of indices) {
+    const numericChangePct = Number(index.change_pct);
+    const deltaClass = numericChangePct >= 0 ? "delta-positive" : "delta-negative";
+    const card = document.createElement("article");
     card.className = "index-card";
     card.innerHTML = `
       <p class="panel-kicker">${index.name}</p>
-      <strong>${index.close.toFixed(2)}</strong>
+      <strong>${formatNumber(index.close)}</strong>
       <p class="${deltaClass}">${formatPercent(index.change_pct)}</p>
-      <p>${index.commentary}</p>
+      <p>${index.commentary ?? `as-of ${snapshotTradeDate}`}</p>
     `;
     indexGridNode.appendChild(card);
   }
 
   breadthGridNode.innerHTML = "";
-  for (const [label, value] of Object.entries(snapshotPayload.market_overview.breadth)) {
+  for (const [label, value] of Object.entries(marketOverview.breadth ?? {})) {
     const card = document.createElement("article");
     card.className = "breadth-card";
     card.innerHTML = `
@@ -238,7 +260,7 @@ function renderMarketOverview(snapshotPayload) {
   }
 
   highlightsListNode.innerHTML = "";
-  for (const item of snapshotPayload.market_overview.highlights) {
+  for (const item of marketOverview.highlights ?? []) {
     const li = document.createElement("li");
     li.textContent = item;
     highlightsListNode.appendChild(li);
@@ -673,8 +695,9 @@ async function fetchWorkbenchData() {
 async function main() {
   try {
     const data = await fetchWorkbenchData();
-    loadStatusNode.textContent = "已读取 READY 快照与详情";
-    snapshotRefNode.textContent = `${data.snapshot.snapshot_id} / ${data.snapshot.raw_snapshot_id} / ${data.snapshot.runtime?.source_provider ?? "--"}`;
+    const snapshotTradeDate = formatDateLabel(data.snapshot.market_overview?.trade_date);
+    loadStatusNode.textContent = `${data.snapshot.status} · as-of ${snapshotTradeDate}`;
+    snapshotRefNode.textContent = `${data.snapshot.runtime?.source_provider ?? "--"} / ${data.snapshot.runtime?.source_universe ?? "--"} / ${data.snapshot.snapshot_id} / ${data.snapshot.raw_snapshot_id}`;
     renderStatusStrip(
       data.snapshot,
       data.screener,

@@ -18,6 +18,11 @@ TUSHARE_FINANCIAL_DATASETS = (
     "balancesheet_vip",
     "cashflow_vip",
 )
+TUSHARE_MARKET_INDEXES = (
+    ("000001.SH", "上证指数"),
+    ("399001.SZ", "深证成指"),
+    ("399006.SZ", "创业板指"),
+)
 
 
 class TushareRequestError(RuntimeError):
@@ -423,6 +428,11 @@ class TushareMarketDataProvider:
             dataset_name="moneyflow_hsgt",
             trade_date=trade_date,
         )
+        index_daily_rows, index_daily_warning = _load_tushare_optional_records(
+            self._pro,
+            dataset_name="index_daily",
+            trade_date=trade_date,
+        )
         adj_factor_by_symbol = {
             _normalize_tushare_symbol(str(row["ts_code"])): _float_or_none(
                 row.get("adj_factor")
@@ -501,6 +511,9 @@ class TushareMarketDataProvider:
             if (row.get("close_raw") or 0.0) < (row.get("pre_close_raw") or 0.0)
         )
         north_money_million = _extract_tushare_north_money_million(moneyflow_hsgt_rows)
+        market_indices, market_index_warnings = _build_tushare_market_indices(
+            index_daily_rows
+        )
         highlights = [
             "canonical structured source: tushare",
             f"tracked universe size: {len(stock_basic_records)}",
@@ -511,14 +524,19 @@ class TushareMarketDataProvider:
                 moneyflow_warning,
                 top_list_warning,
                 moneyflow_hsgt_warning,
+                index_daily_warning,
                 adj_factor_warning,
                 suspend_warning,
                 *financial_bundle.warnings,
+                *market_index_warnings,
             )
             if warning is not None
         ]
         if north_money_million is not None:
             highlights.append(f"north_money_million: {north_money_million:.2f}")
+        highlights.append(
+            f"market_index_coverage: {len(market_indices)}/{len(TUSHARE_MARKET_INDEXES)}"
+        )
         highlights.append(
             f"adj_factor_coverage: {len(adj_factor_by_symbol)}/{len(stock_basic_records)}"
         )
@@ -574,7 +592,7 @@ class TushareMarketDataProvider:
                 ),
                 "regime_label": "盘后结构化同步",
                 "snapshot_source": "Tushare Pro market sync",
-                "indices": [],
+                "indices": market_indices,
                 "breadth": {
                     "advancers": advancers,
                     "decliners": decliners,
@@ -588,6 +606,10 @@ class TushareMarketDataProvider:
                 "daily_bar_count": len(daily_bars),
                 "exchange": self._settings.tushare_exchange,
                 "moneyflow_count": len(moneyflow_rows),
+                "market_index_count": len(market_indices),
+                "market_index_symbols": [
+                    str(item["code"]) for item in market_indices if item.get("code")
+                ],
                 "adj_factor_count": len(adj_factor_overrides),
                 "adj_factor_missing_symbols": sorted(
                     tracked_symbols.difference(set(adj_factor_by_symbol))
@@ -994,6 +1016,59 @@ def _extract_tushare_north_money_million(
         return None
     row = moneyflow_hsgt_rows[0]
     return _float_or_none(row.get("north_money"))
+
+
+def _build_tushare_market_indices(
+    index_daily_rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[str]]:
+    indexed_rows = _index_records_by_key(index_daily_rows, key="ts_code")
+    items: list[dict[str, object]] = []
+    missing_codes: list[str] = []
+    for code, name in TUSHARE_MARKET_INDEXES:
+        row = indexed_rows.get(code)
+        if row is None:
+            missing_codes.append(code)
+            continue
+        close = _float_or_none(row.get("close"))
+        change_pct = _resolve_tushare_index_change_pct(row)
+        if close is None or change_pct is None:
+            missing_codes.append(code)
+            continue
+        items.append(
+            {
+                "code": code,
+                "name": name,
+                "close": close,
+                "change_pct": change_pct,
+                "commentary": _build_tushare_index_commentary(change_pct),
+            }
+        )
+
+    warnings: list[str] = []
+    if missing_codes:
+        warnings.append("index_daily_missing:" + ",".join(missing_codes))
+    return items, warnings
+
+
+def _resolve_tushare_index_change_pct(row: dict[str, object]) -> float | None:
+    pct_chg = _float_or_none(row.get("pct_chg"))
+    if pct_chg is not None:
+        return pct_chg
+    close = _float_or_none(row.get("close"))
+    pre_close = _float_or_none(row.get("pre_close"))
+    if close is None or pre_close in (None, 0.0):
+        return None
+    return (close - pre_close) / pre_close * 100.0
+
+
+def _build_tushare_index_commentary(change_pct: float) -> str:
+    if change_pct >= 1.0:
+        return "日内走强，盘后环境偏积极。"
+    if change_pct >= 0.0:
+        return "小幅收红，修复节奏仍在。"
+    if change_pct > -1.0:
+        return "窄幅整理，情绪仍偏谨慎。"
+    return "回撤偏明显，次日承接需观察。"
 
 
 def _normalize_tushare_volume(raw_value: object) -> float | None:
