@@ -24,7 +24,7 @@ QuantA 目前默认是盘后研究系统，不是盘中实时行情终端。
 3. 白天如果 source 还没有当天日线，页面通常会显示最近一个已完成盘后发布的 `biz_date`
 
 “盘中预览层”的需求和方案概述已经单独记录在：
-[盘中预览层](/Users/carpon/web/QuantA/docs/product-specs/intraday-preview-layer.md)
+[盘中预览层](docs/product-specs/intraday-preview-layer.md)
 
 ## 快速开始
 
@@ -53,9 +53,9 @@ pnpm run ops:after-close
 
 如果要装本机 live runtime，入口见：
 
-1. [docs/OPERATIONS.md](/Users/carpon/web/QuantA/docs/OPERATIONS.md)
-2. [ops/live.env.example](/Users/carpon/web/QuantA/ops/live.env.example)
-3. [ops/launchd/README.md](/Users/carpon/web/QuantA/ops/launchd/README.md)
+1. [docs/OPERATIONS.md](docs/OPERATIONS.md)
+2. [ops/live.env.example](ops/live.env.example)
+3. [ops/launchd/README.md](ops/launchd/README.md)
 
 `ops/live.env.example` 默认使用较少冲突的高位端口：
 
@@ -66,16 +66,16 @@ pnpm run ops:after-close
 
 如果你刚进入仓库，推荐按这个顺序建立上下文：
 
-1. [ARCHITECTURE.md](/Users/carpon/web/QuantA/ARCHITECTURE.md)
-2. [docs/HARNESS.md](/Users/carpon/web/QuantA/docs/HARNESS.md)
-3. [docs/PLANS.md](/Users/carpon/web/QuantA/docs/PLANS.md)
-4. [docs/product-specs/index.md](/Users/carpon/web/QuantA/docs/product-specs/index.md)
-5. [backend/app/README.md](/Users/carpon/web/QuantA/backend/app/README.md)
-6. [docs/OPERATIONS.md](/Users/carpon/web/QuantA/docs/OPERATIONS.md)
+1. [ARCHITECTURE.md](ARCHITECTURE.md)
+2. [docs/HARNESS.md](docs/HARNESS.md)
+3. [docs/PLANS.md](docs/PLANS.md)
+4. [docs/product-specs/index.md](docs/product-specs/index.md)
+5. [backend/app/README.md](backend/app/README.md)
+6. [docs/OPERATIONS.md](docs/OPERATIONS.md)
 
 如果你是 agent，还应该看：
 
-1. [AGENTS.md](/Users/carpon/web/QuantA/AGENTS.md)
+1. [AGENTS.md](AGENTS.md)
 
 ## 核心语义
 
@@ -133,4 +133,4 @@ pnpm run ops:after-close
 ```
 
 更细的 backend 入口、provider 说明和 live sync 口径见：
-[backend/app/README.md](/Users/carpon/web/QuantA/backend/app/README.md)
+[backend/app/README.md](backend/app/README.md)

@@ -4,18 +4,18 @@
 
 ## Primary Sources
 
-1. [A股分析系统需求路线图](/Users/carpon/web/QuantA/mydoc/A股分析系统需求路线图.md)
+1. [A股分析系统需求路线图](../../mydoc/A股分析系统需求路线图.md)
    定义产品定位、阶段路线和 v1.0 范围边界。
-2. [A股分析系统架构设计](/Users/carpon/web/QuantA/mydoc/A股分析系统架构设计.md)
+2. [A股分析系统架构设计](../../mydoc/A股分析系统架构设计.md)
    定义系统分层、模块边界、表结构和快照语义。
-3. [A股分析系统实施文档](/Users/carpon/web/QuantA/mydoc/A股分析系统实施文档.md)
+3. [A股分析系统实施文档](../../mydoc/A股分析系统实施文档.md)
    定义里程碑、实施顺序和验收标准。
 
 ## Supporting Inputs
 
-1. [需求建议1.md](/Users/carpon/web/QuantA/mydoc/需求建议1.md)
-2. [需求建议2.md](/Users/carpon/web/QuantA/mydoc/需求建议2.md)
-3. [需求建议3.md](/Users/carpon/web/QuantA/mydoc/需求建议3.md)
+1. [需求建议1.md](../../mydoc/需求建议1.md)
+2. [需求建议2.md](../../mydoc/需求建议2.md)
+3. [需求建议3.md](../../mydoc/需求建议3.md)
 
 ## Responsibility Split
 
@@ -26,5 +26,5 @@
 
 ## Working Specs
 
-1. [盘中预览层](/Users/carpon/web/QuantA/docs/product-specs/intraday-preview-layer.md)
+1. [盘中预览层](intraday-preview-layer.md)
    记录“今天当天数据预览”这类需求的范围、边界和未来方案概述；当前尚未实现，只作为后续设计入口。

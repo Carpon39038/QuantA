@@ -134,8 +134,8 @@ flowchart LR
 
 当前业务设计以这些文档为准：
 
-1. [A股分析系统需求路线图](/Users/carpon/web/QuantA/mydoc/A股分析系统需求路线图.md)
-2. [A股分析系统架构设计](/Users/carpon/web/QuantA/mydoc/A股分析系统架构设计.md)
-3. [A股分析系统实施文档](/Users/carpon/web/QuantA/mydoc/A股分析系统实施文档.md)
+1. [A股分析系统需求路线图](mydoc/A股分析系统需求路线图.md)
+2. [A股分析系统架构设计](mydoc/A股分析系统架构设计.md)
+3. [A股分析系统实施文档](mydoc/A股分析系统实施文档.md)
 
 面向智能体的摘要、计划和约束则沉淀到 `docs/`。

@@ -22,4 +22,4 @@ QuantA 已经具备最小可用的 DuckDB-backed 选股引擎：analysis artifac
 
 ## Next Step
 
-继续沿 [2026-03-27-m4-backtest-replay.md](/Users/carpon/web/QuantA/docs/exec-plans/active/2026-03-27-m4-backtest-replay.md) 推进最小回测请求、成交明细、资金曲线和 dedicated backtest API，再把这些结果接进前端工作台。
+继续沿 [2026-03-27-m4-backtest-replay.md](2026-03-27-m4-backtest-replay.md) 推进最小回测请求、成交明细、资金曲线和 dedicated backtest API，再把这些结果接进前端工作台。

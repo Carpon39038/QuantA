@@ -14,7 +14,7 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/carpon/web/QuantA</string>
+  <string>__PROJECT_ROOT__</string>
 
   <key>RunAtLoad</key>
   <true/>
@@ -22,8 +22,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/carpon/web/QuantA/data/logs/launchd-pipeline.stdout.log</string>
+  <string>__PROJECT_ROOT__/data/logs/launchd-pipeline.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/carpon/web/QuantA/data/logs/launchd-pipeline.stderr.log</string>
+  <string>__PROJECT_ROOT__/data/logs/launchd-pipeline.stderr.log</string>
 </dict>
 </plist>

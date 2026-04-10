@@ -2,7 +2,7 @@
 
 ## Active Core Docs
 
-1. [core-beliefs.md](/Users/carpon/web/QuantA/docs/design-docs/core-beliefs.md)
+1. [core-beliefs.md](core-beliefs.md)
 
 ## Planned Additions
 

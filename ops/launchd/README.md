@@ -28,6 +28,11 @@ bash scripts/ops_entrypoint.sh frontend
 mkdir -p ~/Library/LaunchAgents
 cp ops/launchd/com.quanta.*.plist.example ~/Library/LaunchAgents/
 
+PROJECT_ROOT="$(pwd)"
+for file in ~/Library/LaunchAgents/com.quanta.*.plist.example; do
+  perl -0pi -e "s#__PROJECT_ROOT__#$PROJECT_ROOT#g" "$file"
+done
+
 for file in ~/Library/LaunchAgents/com.quanta.*.plist.example; do
   target="${file%.example}"
   mv "$file" "$target"

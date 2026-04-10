@@ -4,11 +4,11 @@
 
 ## Start Here
 
-1. [HARNESS.md](/Users/carpon/web/QuantA/docs/HARNESS.md)
-2. [PLANS.md](/Users/carpon/web/QuantA/docs/PLANS.md)
-3. [QUALITY_SCORE.md](/Users/carpon/web/QuantA/docs/QUALITY_SCORE.md)
-4. [RELIABILITY.md](/Users/carpon/web/QuantA/docs/RELIABILITY.md)
-5. [SECURITY.md](/Users/carpon/web/QuantA/docs/SECURITY.md)
+1. [HARNESS.md](HARNESS.md)
+2. [PLANS.md](PLANS.md)
+3. [QUALITY_SCORE.md](QUALITY_SCORE.md)
+4. [RELIABILITY.md](RELIABILITY.md)
+5. [SECURITY.md](SECURITY.md)
 
 ## Directories
 
