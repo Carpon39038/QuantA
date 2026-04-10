@@ -218,31 +218,33 @@ class FakeTusharePro:
 
     def index_daily(self, **kwargs) -> FakeFrame:
         assert kwargs.get("trade_date") == "20260401"
-        return FakeFrame(
-            [
-                {
-                    "ts_code": "000001.SH",
-                    "trade_date": "20260401",
-                    "close": 3348.72,
-                    "pre_close": 3361.49,
-                    "pct_chg": -0.38,
-                },
-                {
-                    "ts_code": "399001.SZ",
-                    "trade_date": "20260401",
-                    "close": 10492.15,
-                    "pre_close": 10466.99,
-                    "pct_chg": 0.24,
-                },
-                {
-                    "ts_code": "399006.SZ",
-                    "trade_date": "20260401",
-                    "close": 2198.44,
-                    "pre_close": 2178.62,
-                    "pct_chg": 0.91,
-                },
-            ]
-        )
+        records = {
+            "000001.SH": {
+                "ts_code": "000001.SH",
+                "trade_date": "20260401",
+                "close": 3348.72,
+                "pre_close": 3361.49,
+                "pct_chg": -0.38,
+            },
+            "399001.SZ": {
+                "ts_code": "399001.SZ",
+                "trade_date": "20260401",
+                "close": 10492.15,
+                "pre_close": 10466.99,
+                "pct_chg": 0.24,
+            },
+            "399006.SZ": {
+                "ts_code": "399006.SZ",
+                "trade_date": "20260401",
+                "close": 2198.44,
+                "pre_close": 2178.62,
+                "pct_chg": 0.91,
+            },
+        }
+        ts_code = kwargs.get("ts_code")
+        if ts_code is None:
+            return FakeFrame(list(records.values()))
+        return FakeFrame([records[str(ts_code)]])
 
     def fina_indicator_vip(self, **kwargs) -> FakeFrame:
         period = kwargs.get("period")

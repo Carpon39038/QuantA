@@ -256,31 +256,33 @@ class FakeTusharePro:
         if trade_date not in OPEN_DATES:
             return FakeFrame([])
         day_offset = OPEN_DATES.index(trade_date)
-        return FakeFrame(
-            [
-                {
-                    "ts_code": "000001.SH",
-                    "trade_date": trade_date,
-                    "close": 3300.0 + day_offset * 18.0,
-                    "pre_close": 3288.0 + day_offset * 18.0,
-                    "pct_chg": 0.36,
-                },
-                {
-                    "ts_code": "399001.SZ",
-                    "trade_date": trade_date,
-                    "close": 10350.0 + day_offset * 30.0,
-                    "pre_close": 10305.0 + day_offset * 30.0,
-                    "pct_chg": 0.44,
-                },
-                {
-                    "ts_code": "399006.SZ",
-                    "trade_date": trade_date,
-                    "close": 2180.0 + day_offset * 8.0,
-                    "pre_close": 2169.0 + day_offset * 8.0,
-                    "pct_chg": 0.51,
-                },
-            ]
-        )
+        records = {
+            "000001.SH": {
+                "ts_code": "000001.SH",
+                "trade_date": trade_date,
+                "close": 3300.0 + day_offset * 18.0,
+                "pre_close": 3288.0 + day_offset * 18.0,
+                "pct_chg": 0.36,
+            },
+            "399001.SZ": {
+                "ts_code": "399001.SZ",
+                "trade_date": trade_date,
+                "close": 10350.0 + day_offset * 30.0,
+                "pre_close": 10305.0 + day_offset * 30.0,
+                "pct_chg": 0.44,
+            },
+            "399006.SZ": {
+                "ts_code": "399006.SZ",
+                "trade_date": trade_date,
+                "close": 2180.0 + day_offset * 8.0,
+                "pre_close": 2169.0 + day_offset * 8.0,
+                "pct_chg": 0.51,
+            },
+        }
+        ts_code = kwargs.get("ts_code")
+        if ts_code is None:
+            return FakeFrame(list(records.values()))
+        return FakeFrame([records[str(ts_code)]])
 
     def dividend(self, **kwargs) -> FakeFrame:
         self.dividend_call_count += 1

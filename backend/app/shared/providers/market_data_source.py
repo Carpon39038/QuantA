@@ -428,9 +428,8 @@ class TushareMarketDataProvider:
             dataset_name="moneyflow_hsgt",
             trade_date=trade_date,
         )
-        index_daily_rows, index_daily_warning = _load_tushare_optional_records(
+        index_daily_rows, index_daily_warning = _load_tushare_index_daily_rows(
             self._pro,
-            dataset_name="index_daily",
             trade_date=trade_date,
         )
         adj_factor_by_symbol = {
@@ -756,6 +755,29 @@ def _load_tushare_optional_records(
         ), None
     except TushareRequestError as exc:
         return [], f"{dataset_name}_unavailable:{exc.category}"
+
+
+def _load_tushare_index_daily_rows(
+    pro_client: Any,
+    *,
+    trade_date: str,
+) -> tuple[list[dict[str, object]], str | None]:
+    rows: list[dict[str, object]] = []
+    for ts_code, _name in TUSHARE_MARKET_INDEXES:
+        try:
+            items = _frame_records(
+                _call_tushare_dataset(
+                    pro_client,
+                    dataset_name="index_daily",
+                    ts_code=ts_code,
+                    trade_date=trade_date,
+                )
+            )
+        except TushareRequestError as exc:
+            return [], f"index_daily_unavailable:{exc.category}"
+        if items:
+            rows.append(dict(items[0]))
+    return rows, None
 
 
 def _resolve_tushare_financial_bundle(
