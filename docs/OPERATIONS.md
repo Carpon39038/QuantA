@@ -32,7 +32,7 @@ QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS=5 pnpm run pipeline:daemon
 `pipeline:daemon` 每个 tick 输出一行 JSON。重点看这些字段：
 
 1. `event`
-   `scheduler_tick` 表示一次轮询，`scheduler_loop_finished` 只会在有限 iterations 的测试模式里出现。
+   `scheduler_tick_started` 表示 resident loop 已开始本轮轮询；`scheduler_tick` 表示一次轮询已完成；`scheduler_loop_finished` 只会在有限 iterations 的测试模式里出现。
 2. `pipeline.enqueued`
    非空表示本 tick 排入了 `history_backfill/daily_sync/daily_screener/daily_backtest` 之一。
 3. `service_worker.processed`
@@ -72,6 +72,9 @@ chmod 600 data/env/live.env
 
 然后编辑 `data/env/live.env` 写入真实 token。本仓库只提供 `ops/live.env.example`，不要把真实 `data/env/live.env` 提交。
 
+`ops/live.env.example` 默认把 live 端口放到较少冲突的高位端口：backend `18765`，frontend `24173`。
+同时它会把 live runtime 单独落到 `data/live/`，避免和默认开发用的 `data/duckdb/quanta.duckdb` 混在一起。
+
 launchd 模板位于 `ops/launchd/`；三个服务分别是 `com.quanta.pipeline`、`com.quanta.backend` 和 `com.quanta.frontend`。模板统一调用 `bash scripts/ops_entrypoint.sh <service>`，入口脚本会加载 `data/env/live.env`，并在 pipeline 启动前执行最小 schema bootstrap。
 
 正式 runtime 前，建议先跑一次隔离 canary：
@@ -109,6 +112,14 @@ pnpm run ops:after-close
 curl -s http://127.0.0.1:8765/api/v1/system/health
 curl -s http://127.0.0.1:8765/api/v1/system/alerts
 curl -s http://127.0.0.1:8765/api/v1/runtime
+```
+
+如果你按 `ops/live.env.example` 安装了 live runtime，对应健康检查地址会变成：
+
+```bash
+curl -s http://127.0.0.1:18765/api/v1/system/health
+curl -s http://127.0.0.1:18765/api/v1/system/alerts
+curl -s http://127.0.0.1:18765/api/v1/runtime
 ```
 
 如果想让 doctor 顺手请求 live source 并检查最新 READY 是否落后：
@@ -167,6 +178,8 @@ daemon 有两层恢复：
    queue worker 会按 `QUANTA_TASK_MAX_RETRIES` 与 `QUANTA_TASK_RETRY_BACKOFF_SECONDS` 重试；耗尽后写 alert。
 2. tick-level 失败
    resident scheduler 默认写 `scheduler_loop_failure` alert，并在下一个 poll 继续运行。
+3. launchd / 进程重启后遗留的 `queue/*/processing/*.json`
+   daemon / worker 启动时会自动把这类 orphaned item 回收到 `pending`，并写 `service_queue_processing_recovered` 或 `backtest_queue_processing_recovered` warning alert。
 
 如果你希望排障时 fail-fast：
 

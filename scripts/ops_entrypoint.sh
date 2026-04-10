@@ -31,7 +31,11 @@ case "${1:-}" in
     exec pnpm run pipeline:daemon
     ;;
   doctor)
-    exec pnpm run ops:after-close -- --require-http --require-fresh-pipeline-log --fail-on-alert
+    exec python3 scripts/after_close_check.py \
+      --live-source \
+      --require-http \
+      --require-fresh-pipeline-log \
+      --fail-on-alert
     ;;
   *)
     echo "Usage: bash scripts/ops_entrypoint.sh {backend|frontend|pipeline|doctor}" >&2

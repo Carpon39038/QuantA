@@ -36,6 +36,7 @@ def process_backtest_queue(
     limit: int | None = None,
 ) -> dict[str, object]:
     ensure_runtime_directories(settings)
+    _recover_orphaned_backtest_processing_items(settings)
 
     pending_items = pending_backtest_queue_items(settings, limit=limit)
     summary = {
@@ -109,6 +110,7 @@ def process_service_queue(
     limit: int | None = None,
 ) -> dict[str, object]:
     ensure_runtime_directories(settings)
+    _recover_orphaned_service_processing_items(settings)
 
     pending_items = pending_service_queue_items(settings, limit=limit)
     summary = {
@@ -175,6 +177,16 @@ def process_service_queue(
         summary["completed_ids"].append(task_id)
 
     return summary
+
+
+def recover_orphaned_queue_items(settings: AppSettings) -> dict[str, list[str]]:
+    ensure_runtime_directories(settings)
+    service_task_ids = _recover_orphaned_service_processing_items(settings)
+    backtest_ids = _recover_orphaned_backtest_processing_items(settings)
+    return {
+        "service_task_ids": service_task_ids,
+        "backtest_ids": backtest_ids,
+    }
 
 
 def _process_one_backtest_request(
@@ -565,6 +577,122 @@ def _build_retry_state(
         "retry_count": next_retry_count,
         "next_attempt_at": next_attempt_at,
     }
+
+
+def _recover_orphaned_service_processing_items(settings: AppSettings) -> list[str]:
+    processing_dir = settings.queue_dir / "service" / "processing"
+    if not processing_dir.exists():
+        return []
+
+    recovered_at = _now_isoformat()
+    recovered_task_ids: list[str] = []
+    for processing_path in sorted(processing_dir.glob("*.json")):
+        queue_item = json.loads(processing_path.read_text(encoding="utf-8"))
+        queue_item["next_attempt_at"] = recovered_at
+        queue_item["last_error"] = "orphaned_processing_recovered"
+        pending_path = move_service_queue_item(
+            settings,
+            path=processing_path,
+            target_state="pending",
+        )
+        rewrite_service_queue_item(settings, path=pending_path, queue_item=queue_item)
+        replace_service_task_run_log(
+            settings,
+            task_id=str(queue_item["task_id"]),
+            task_name=str(queue_item["task_name"]),
+            biz_date=str(queue_item["biz_date"]),
+            snapshot_id=str(queue_item["snapshot_id"]),
+            attempt_no=int(queue_item.get("retry_count", 0)),
+            status="PENDING",
+            started_at=recovered_at,
+            finished_at=recovered_at,
+            detail={
+                "queue_source": "durable_file_queue",
+                "requested_at": str(queue_item["requested_at"]),
+                "recovered_from": "processing",
+                "recovered_at": recovered_at,
+            },
+        )
+        recovered_task_ids.append(str(queue_item["task_id"]))
+
+    if recovered_task_ids:
+        emit_alert(
+            settings,
+            alert_type="service_queue_processing_recovered",
+            severity="warn",
+            message=f"Recovered {len(recovered_task_ids)} orphaned service queue item(s)",
+            detail={"task_ids": recovered_task_ids},
+        )
+    return recovered_task_ids
+
+
+def _recover_orphaned_backtest_processing_items(settings: AppSettings) -> list[str]:
+    processing_dir = settings.queue_dir / "backtest" / "processing"
+    if not processing_dir.exists():
+        return []
+
+    recovered_at = _now_isoformat()
+    recovered_backtest_ids: list[str] = []
+    for processing_path in sorted(processing_dir.glob("*.json")):
+        queue_item = json.loads(processing_path.read_text(encoding="utf-8"))
+        queue_item["next_attempt_at"] = recovered_at
+        queue_item["last_error"] = "orphaned_processing_recovered"
+        pending_path = move_backtest_queue_item(
+            settings,
+            path=processing_path,
+            target_state="pending",
+        )
+        rewrite_backtest_queue_item(settings, path=pending_path, queue_item=queue_item)
+
+        connection = connect_duckdb(settings.duckdb_path)
+        try:
+            upsert_backtest_request_row(
+                connection,
+                backtest_id=str(queue_item["backtest_id"]),
+                requested_at=str(queue_item["requested_at"]),
+                snapshot_id=str(queue_item["snapshot_id"]),
+                raw_snapshot_id=str(queue_item["raw_snapshot_id"]),
+                strategy_version=str(queue_item["strategy_version"]),
+                signal_price_basis=str(queue_item["signal_price_basis"]),
+                payload_json=(
+                    queue_item["payload"]
+                    if isinstance(queue_item.get("payload"), dict)
+                    else {}
+                ),
+                status="PENDING",
+                retry_count=int(queue_item.get("retry_count", 0)),
+                last_error="orphaned_processing_recovered",
+            )
+            _replace_task_run_log(
+                connection,
+                task_id=f"{queue_item['backtest_id']}:worker",
+                task_name="backtest_worker",
+                biz_date=str(queue_item["biz_date"]),
+                snapshot_id=str(queue_item["snapshot_id"]),
+                attempt_no=int(queue_item.get("retry_count", 0)),
+                status="RETRY_WAIT",
+                started_at=recovered_at,
+                finished_at=recovered_at,
+                detail={
+                    "backtest_id": str(queue_item["backtest_id"]),
+                    "error": "orphaned_processing_recovered",
+                    "queue_source": "durable_file_queue",
+                },
+            )
+        finally:
+            connection.close()
+
+        recovered_backtest_ids.append(str(queue_item["backtest_id"]))
+
+    if recovered_backtest_ids:
+        emit_alert(
+            settings,
+            alert_type="backtest_queue_processing_recovered",
+            severity="warn",
+            message=f"Recovered {len(recovered_backtest_ids)} orphaned backtest queue item(s)",
+            detail={"backtest_ids": recovered_backtest_ids},
+        )
+    return recovered_backtest_ids
 
 
 def _replace_task_run_log(

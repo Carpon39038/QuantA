@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 
 from backend.app.app_wiring.settings import load_settings
+from backend.app.domains.tasking.queue import move_service_queue_item
 from backend.app.shared.providers.duckdb import connect_duckdb
 
 
@@ -146,17 +147,23 @@ def verify_resident_scheduler_stream_case() -> None:
             for line in scheduler_output.splitlines()
             if line.startswith("{")
         ]
-        assert [event["event"] for event in stream_events[:-1]] == [
+        tick_started_events = [
+            event for event in stream_events if event["event"] == "scheduler_tick_started"
+        ]
+        tick_events = [
+            event for event in stream_events if event["event"] == "scheduler_tick"
+        ]
+        assert [event["event"] for event in tick_events] == [
             "scheduler_tick",
             "scheduler_tick",
             "scheduler_tick",
         ]
+        assert [event["tick_no"] for event in tick_started_events] == [1, 2, 3]
         assert stream_events[-1]["event"] == "scheduler_loop_finished"
         assert stream_events[-1]["iterations"] == 3
         assert any(
             event["service_worker"]["processed"] >= 1
-            for event in stream_events
-            if event["event"] == "scheduler_tick"
+            for event in tick_events
         )
         log_events = [
             json.loads(line)
@@ -167,10 +174,84 @@ def verify_resident_scheduler_stream_case() -> None:
         assert log_events == stream_events
 
 
+def verify_orphaned_processing_recovery_case() -> None:
+    with tempfile.TemporaryDirectory(prefix="quanta-pipeline-recover-") as temp_dir:
+        runtime_dir = Path(temp_dir)
+        env = build_env(runtime_dir)
+        env["QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS"] = "0"
+        bootstrap_runtime(env)
+
+        previous_env = os.environ.copy()
+        try:
+            os.environ.update(
+                {
+                    "QUANTA_RUNTIME_DATA_DIR": str(runtime_dir),
+                    "QUANTA_DUCKDB_PATH": str(runtime_dir / "duckdb" / "quanta.duckdb"),
+                }
+            )
+            settings = load_settings()
+            enqueue_summary = json.loads(
+                run_checked(
+                    [
+                        "python3",
+                        "-m",
+                        "backend.app.domains.tasking.scheduler",
+                        "--enqueue-only",
+                    ],
+                    env,
+                )
+            )
+            enqueued_payload = enqueue_summary["enqueued"]
+            move_service_queue_item(
+                settings,
+                path=Path(str(enqueued_payload["queue_path"])),
+                target_state="processing",
+            )
+        finally:
+            os.environ.clear()
+            os.environ.update(previous_env)
+
+        scheduler_output = run_checked(
+            [
+                "python3",
+                "-m",
+                "backend.app.domains.tasking.scheduler",
+                "--daemon",
+                "--auto-pipeline",
+                "--iterations",
+                "1",
+                "--stream-ticks",
+                "--stop-on-error",
+            ],
+            env,
+        )
+        stream_events = [
+            json.loads(line)
+            for line in scheduler_output.splitlines()
+            if line.startswith("{")
+        ]
+        tick_event = next(event for event in stream_events if event["event"] == "scheduler_tick")
+        assert tick_event["pipeline"]["reason"] == "service_queue_busy"
+        assert tick_event["service_worker"]["processed"] == 1
+        assert str(enqueued_payload["task_id"]) in tick_event["service_worker"]["completed_ids"]
+
+        alerts_path = runtime_dir / "logs" / "alerts.jsonl"
+        alerts = [
+            json.loads(line)
+            for line in alerts_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert any(
+            alert["alert_type"] == "service_queue_processing_recovered"
+            for alert in alerts
+        )
+
+
 def main() -> int:
     verify_scheduler_success_case()
     verify_retry_case()
     verify_resident_scheduler_stream_case()
+    verify_orphaned_processing_recovery_case()
     print("[pipeline-smoke] scheduler and retry paths are healthy")
     return 0
 

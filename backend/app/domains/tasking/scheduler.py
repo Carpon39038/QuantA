@@ -19,6 +19,7 @@ from backend.app.domains.tasking.queue import enqueue_service_task
 from backend.app.domains.tasking.worker import (
     process_backtest_queue,
     process_service_queue,
+    recover_orphaned_queue_items,
 )
 from backend.app.shared.providers.duckdb import connect_duckdb
 from backend.app.shared.telemetry.alerts import emit_alert
@@ -111,6 +112,7 @@ def run_scheduler_tick(
     backtest_limit: int | None = None,
 ) -> dict[str, object]:
     ensure_runtime_directories(settings)
+    recover_orphaned_queue_items(settings)
     pipeline_action = (
         enqueue_next_pipeline_task(settings) if auto_pipeline else {"enqueued": None, "reason": "auto_pipeline_disabled"}
     )
@@ -163,6 +165,17 @@ def run_scheduler_loop(
     loop_count = 0
     last_error_signature: str | None = None
     while iterations is None or loop_count < iterations:
+        next_tick_no = loop_count + 1
+        if stream_ticks:
+            _emit_stream_event(
+                {
+                    "event": "scheduler_tick_started",
+                    "tick_no": next_tick_no,
+                },
+                log_path=stream_log_path,
+                log_max_bytes=stream_log_max_bytes,
+                log_backups=stream_log_backups,
+            )
         try:
             tick_summary = run_scheduler_tick(settings, auto_pipeline=auto_pipeline)
             last_error_signature = None

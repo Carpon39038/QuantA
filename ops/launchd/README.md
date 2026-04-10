@@ -12,6 +12,7 @@ chmod 600 data/env/live.env
 ```
 
 Then edit `data/env/live.env` and set `QUANTA_TUSHARE_TOKEN`.
+The example also keeps the live runtime in `data/live/` so it does not overwrite the default dev fixture database.
 
 ## Manual foreground check
 
