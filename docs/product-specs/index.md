@@ -23,3 +23,8 @@
 2. 领域建模和系统边界，以架构设计为准。
 3. 交付顺序和验收口径，以实施文档为准。
 4. 面向智能体的摘要、计划和质量约束，以 `docs/` 为准。
+
+## Working Specs
+
+1. [盘中预览层](/Users/carpon/web/QuantA/docs/product-specs/intraday-preview-layer.md)
+   记录“今天当天数据预览”这类需求的范围、边界和未来方案概述；当前尚未实现，只作为后续设计入口。

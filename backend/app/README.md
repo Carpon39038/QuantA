@@ -53,6 +53,9 @@
 9.2. `pnpm run pipeline:canary` 会使用隔离 runtime 演练 resident scheduler；2026-04-09 已用 Tushare live token 在 `core_research_12` 上跑通 canary，daemon 自动 catch-up 到 `2026-04-09`，health 为 `ok`，alerts 为 `0`。
 9.3. `pipeline:daemon` 的 JSONL tick 会同步落盘到 `data/logs/pipeline-daemon.jsonl` 并按大小轮转；`ops/launchd/` 提供本机 launchd 模板，`pnpm run ops:after-close` 提供盘后巡检聚合。
 10. 当前正式数据源口径已经收敛为 `Tushare Pro 5000积分档 + 巨潮资讯/上交所/深交所 + AKShare/BaoStock补充层`。
+10.1. 当前 workbench 仍是 `snapshot-first` 的盘后研究界面：默认只读最新 `READY snapshot`，不把盘中试验性行情直接混入盘后回测与发布链。
+10.2. 这意味着在 `T+0` 白天，即使页面已经是 live runtime，也通常只能展示最近一个已完成盘后发布的 `biz_date`；如果 `tushare daily/index_daily` 对当天 `trade_date` 仍返回空集，latest `READY snapshot` 会继续停留在上一个开市日。
+10.3. “想看今天盘中走势，但又不污染 READY snapshot” 这类需求，后续将单独收敛到盘中预览层；需求与方案概述见 [docs/product-specs/intraday-preview-layer.md](/Users/carpon/web/QuantA/docs/product-specs/intraday-preview-layer.md)。
 11. `Tushare Pro 5000` 当前承担的 canonical 目标表包括：`stock_basic`、`trade_calendar`、`daily_bar`、`adj_factor`、`daily_basic`、`stk_limit`、`moneyflow`、`top_list`、`moneyflow_hsgt`，以及全市场季度财务过滤所需的 `fina_indicator_vip`、`income_vip`、`balancesheet_vip`、`cashflow_vip`。
 12. 全市场季度财务过滤现在回到 v1.0 默认前提，可以直接进入正式选股主链，而不必先降级成“候选池后拉取”。
 13. 当前 `akshare.stock_zh_a_hist` 这条历史日线路径底层会依赖其上游公开行情接口；仓库已接入 AKShare provider，但 live fetch 是否成功仍取决于当前机器的代理/网络环境以及 AKShare 上游链路状态。
