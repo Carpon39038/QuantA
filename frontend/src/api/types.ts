@@ -5,6 +5,8 @@ export interface SnapshotResponse {
   raw_snapshot_id: string;
   status: string;
   generated_at: string;
+  price_basis: string;
+  shadow_validation: ShadowValidation;
   market_overview: MarketOverview;
   screener: ScreenerSection;
   backtest: BacktestSection;
@@ -92,9 +94,16 @@ export interface TaskStatusEntry {
   next_window: string | null;
 }
 
+export interface ShadowValidation {
+  status: string;
+  providers: unknown[];
+}
+
 export interface RuntimeInfo {
   backend_origin: string;
   frontend_origin: string;
+  source_symbol_count: number;
+  source_universe: string;
   [key: string]: unknown;
 }
 
@@ -110,9 +119,11 @@ export interface SystemHealthResponse {
 
 export interface AlertSummary {
   window_count: number;
-  error_count: number;
-  warning_count: number;
-  notice_count: number;
+  severity_counts: {
+    INFO: number;
+    WARNING: number;
+    ERROR: number;
+  };
 }
 
 export interface AlertsResponse {
@@ -121,9 +132,9 @@ export interface AlertsResponse {
 }
 
 export interface AlertItem {
-  log_level: string;
-  timestamp: string;
-  source: string;
+  severity: string;
+  triggered_at: string;
+  alert_type: string;
   message: string;
 }
 
