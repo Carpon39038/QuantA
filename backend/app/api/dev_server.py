@@ -223,7 +223,12 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                 backtest_key = path_parts[4]
 
                 try:
-                    payload = container.backtest_run_payload(backtest_id=backtest_key)
+                    if backtest_key == "latest":
+                        payload = container.backtest_run_payload(
+                            snapshot_id=_query_value(query, "snapshot_id"),
+                        )
+                    else:
+                        payload = container.backtest_run_payload(backtest_id=backtest_key)
                     if path_parts[5] == "trades":
                         self._send_json(
                             200,
