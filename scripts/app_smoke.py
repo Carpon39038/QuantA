@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from backend.app.app_wiring.settings import load_settings
 from backend.app.domains.backtest.queue import delete_backtest_request_artifacts
 from backend.app.domains.market_data.sync import delete_snapshot_artifacts
+from backend.app.domains.strategy_watchlist.service import remove_strategy_watchlist_item
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 from backend.app.domains.tasking.queue import delete_service_task_artifacts
 from backend.app.shared.providers.duckdb import connect_duckdb
@@ -48,6 +49,12 @@ def post_json(url: str, payload: dict[str, object] | None = None) -> dict[str, o
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def delete_json(url: str) -> dict[str, object]:
+    request = urllib.request.Request(url, method="DELETE")
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -182,6 +189,7 @@ def main() -> int:
     queued_service_task_ids: list[str] = []
     pipeline_snapshot_id: str | None = None
     pipeline_raw_snapshot_id: str | None = None
+    monitored_symbols: list[str] = []
 
     try:
         wait_for("backend health", f"{backend_origin}/health")
@@ -225,6 +233,15 @@ def main() -> int:
         )
         corporate_actions_payload = fetch_json(
             f"{backend_origin}/api/v1/stocks/300750.SZ/corporate-actions"
+        )
+        strategy_watch_add_payload = post_json(
+            f"{backend_origin}/api/v1/strategy-watchlist",
+            {"symbol": "300750.SZ"},
+        )
+        monitored_symbols.append("300750.SZ")
+        strategy_watchlist_payload = fetch_json(f"{backend_origin}/api/v1/strategy-watchlist")
+        frontend_strategy_watchlist_payload = fetch_json(
+            f"{frontend_origin}/api/v1/strategy-watchlist"
         )
         screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
         screener_results_payload = fetch_json(
@@ -309,6 +326,13 @@ def main() -> int:
         processed_backtest_payload = fetch_json(
             f"{backend_origin}/api/v1/backtests/runs/{backtest_post_payload['backtest']['backtest_id']}"
         )
+        strategy_watch_delete_payload = delete_json(
+            f"{backend_origin}/api/v1/strategy-watchlist/300750.SZ"
+        )
+        monitored_symbols.remove("300750.SZ")
+        strategy_watchlist_after_delete_payload = fetch_json(
+            f"{backend_origin}/api/v1/strategy-watchlist"
+        )
         frontend_html = fetch_text(f"{frontend_origin}/")
         frontend_entry = fetch_text(f"{frontend_origin}/src/main.tsx")
 
@@ -382,6 +406,24 @@ def main() -> int:
         assert corporate_actions_payload["range"]["row_count"] >= 1
         assert corporate_actions_payload["latest_corporate_action"] is not None
         assert corporate_actions_payload["items"][-1]["action_summary"]
+        assert strategy_watch_add_payload["status"] == "ok"
+        assert strategy_watch_add_payload["item"]["symbol"] == "300750.SZ"
+        assert strategy_watch_add_payload["item"]["monitoring_status"] in {
+            "BUY",
+            "WATCH",
+            "SELL",
+            "AVOID",
+            "UNAVAILABLE",
+        }
+        assert any(
+            item["symbol"] == "300750.SZ"
+            for item in strategy_watchlist_payload["items"]
+        )
+        assert frontend_strategy_watchlist_payload["snapshot_id"] == backend_payload["snapshot_id"]
+        assert any(
+            item["symbol"] == "300750.SZ"
+            for item in frontend_strategy_watchlist_payload["items"]
+        )
         assert screener_latest_payload["run_id"].startswith("screener_run_")
         assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])
         assert screener_latest_payload["result_count"] >= 3
@@ -477,6 +519,11 @@ def main() -> int:
         assert processed_backtest_payload["status"] == "SUCCESS"
         assert len(processed_backtest_payload["trades"]) >= 4
         assert len(processed_backtest_payload["equity_curve"]) >= 3
+        assert strategy_watch_delete_payload["status"] == "removed"
+        assert all(
+            item["symbol"] != "300750.SZ"
+            for item in strategy_watchlist_after_delete_payload["items"]
+        )
         assert "<div id=\"root\"></div>" in frontend_html
         assert "/@vite/client" in frontend_html
         assert "/src/main.tsx" in frontend_html
@@ -505,6 +552,11 @@ def main() -> int:
             )
         for task_id in queued_service_task_ids:
             delete_service_task_artifacts(settings, task_id=task_id)
+        for symbol in monitored_symbols:
+            try:
+                remove_strategy_watchlist_item(settings, symbol=symbol)
+            except LookupError:
+                pass
 
 
 if __name__ == "__main__":

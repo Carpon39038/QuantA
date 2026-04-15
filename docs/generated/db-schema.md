@@ -321,6 +321,18 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `rank_no` | `INTEGER` | 排序名次; required |
 | `PRIMARY KEY` | `constraint` | run_id, symbol |
 
+### `strategy_watchlist`
+
+用户手动加入的个股策略监控列表。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `preferred_strategy_name` | `VARCHAR` | 偏好策略名称，AUTO 表示自动选择; required |
+| `created_at` | `TIMESTAMP` | 加入监控时间; required |
+| `updated_at` | `TIMESTAMP` | 最近更新时间; required |
+| `PRIMARY KEY` | `constraint` | symbol |
+
 ### `backtest_request`
 
 持久化回测请求，当前作为本地 durable queue 的最小载体。

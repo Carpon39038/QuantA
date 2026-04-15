@@ -2518,6 +2518,7 @@ def load_system_health(settings: AppSettings) -> dict[str, object]:
                 "fundamental_feature_daily",
                 "official_disclosure_item",
                 "corporate_action_item",
+                "strategy_watchlist",
                 "screener_run",
                 "screener_result",
                 "backtest_request",

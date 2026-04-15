@@ -317,6 +317,15 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                 )
                 return
 
+            if parsed.path == "/api/v1/strategy-watchlist":
+                self._send_json(
+                    200,
+                    container.strategy_watchlist_payload(
+                        snapshot_id=_query_value(query, "snapshot_id"),
+                    ),
+                )
+                return
+
             self._send_json(404, {"error": "not_found", "path": parsed.path})
 
         def do_POST(self) -> None:
@@ -463,6 +472,66 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                             "status": "accepted",
                             "backtest": queued_request,
                         },
+                    )
+                    return
+                except LookupError as exc:
+                    self._send_json(
+                        404,
+                        {"error": "not_found", "message": str(exc)},
+                    )
+                    return
+                except ValueError as exc:
+                    self._send_json(
+                        400,
+                        {"error": "bad_request", "message": str(exc)},
+                    )
+                    return
+
+            if parsed.path == "/api/v1/strategy-watchlist":
+                try:
+                    symbol = _query_value(query, "symbol") or _body_value(body, "symbol")
+                    if symbol is None:
+                        raise ValueError("symbol is required")
+                    preferred_strategy_name = _query_value(query, "preferred_strategy_name") or _body_value(
+                        body, "preferred_strategy_name"
+                    )
+                    self._send_json(
+                        201,
+                        {
+                            "status": "ok",
+                            **container.add_strategy_watchlist_item_payload(
+                                symbol=symbol,
+                                preferred_strategy_name=preferred_strategy_name,
+                            ),
+                        },
+                    )
+                    return
+                except LookupError as exc:
+                    self._send_json(
+                        404,
+                        {"error": "not_found", "message": str(exc)},
+                    )
+                    return
+                except ValueError as exc:
+                    self._send_json(
+                        400,
+                        {"error": "bad_request", "message": str(exc)},
+                    )
+                    return
+
+            self._send_json(404, {"error": "not_found", "path": parsed.path})
+
+        def do_DELETE(self) -> None:
+            parsed = urlparse(self.path)
+            path_parts = parsed.path.strip("/").split("/")
+
+            if len(path_parts) == 4 and path_parts[:3] == ["api", "v1", "strategy-watchlist"]:
+                try:
+                    self._send_json(
+                        200,
+                        container.remove_strategy_watchlist_item_payload(
+                            symbol=path_parts[3],
+                        ),
                     )
                     return
                 except LookupError as exc:

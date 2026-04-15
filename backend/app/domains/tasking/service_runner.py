@@ -16,6 +16,7 @@ from backend.app.app_wiring.settings import AppSettings
 from backend.app.domains.screener.bootstrap import (
     materialize_screener_snapshot,
 )
+from backend.app.domains.strategy_watchlist.service import emit_strategy_watchlist_alerts
 from backend.app.domains.tasking.bootstrap import ensure_runtime_directories
 
 
@@ -208,11 +209,16 @@ def run_daily_backtest(
         connection.close()
 
     finalize_snapshot_publish(settings, snapshot_id=str(target_snapshot["snapshot_id"]))
+    watchlist_alert_summary = emit_strategy_watchlist_alerts(
+        settings,
+        snapshot_id=str(target_snapshot["snapshot_id"]),
+    )
     return {
         "runtime": ensure_runtime_directories(settings),
         "snapshot_id": str(target_snapshot["snapshot_id"]),
         "raw_snapshot_id": str(target_snapshot["raw_snapshot_id"]),
         "backtest": backtest_summary,
+        "strategy_watchlist_alerts": watchlist_alert_summary,
         "status": "READY",
     }
 

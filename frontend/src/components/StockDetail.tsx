@@ -12,6 +12,9 @@ interface StockDetailProps {
   selectedSymbol: string | null;
   loading?: boolean;
   error?: string | null;
+  isMonitored?: boolean;
+  monitoringBusy?: boolean;
+  onToggleMonitor?: () => Promise<void>;
 }
 
 function formatNum(v: number | null | undefined, digits = 2): string {
@@ -31,7 +34,15 @@ function fmtAmount(v: number | null | undefined): string {
   return v.toFixed(2);
 }
 
-export function StockDetail({ stockData, selectedSymbol, loading, error }: StockDetailProps) {
+export function StockDetail({
+  stockData,
+  selectedSymbol,
+  loading,
+  error,
+  isMonitored,
+  monitoringBusy,
+  onToggleMonitor,
+}: StockDetailProps) {
   if (!selectedSymbol) {
     return (
       <div className="flex-1 flex items-center justify-center text-white/30 text-sm">
@@ -102,6 +113,16 @@ export function StockDetail({ stockData, selectedSymbol, loading, error }: Stock
           <div className="text-[10px] text-white/40 mt-0.5">{selectedSymbol}</div>
         </div>
         <div className="text-right">
+          {onToggleMonitor && (
+            <button
+              type="button"
+              onClick={() => void onToggleMonitor()}
+              disabled={monitoringBusy}
+              className="mb-2 rounded-md border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-[10px] text-blue-200 transition-colors hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isMonitored ? '移出监控' : '加入监控'}
+            </button>
+          )}
           <div className={cn('text-xl font-semibold', isUp ? 'text-[#FF5F56]' : 'text-[#27C93F]')}>
             {close != null ? close.toFixed(2) : '--'}
           </div>

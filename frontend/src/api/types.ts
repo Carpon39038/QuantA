@@ -308,3 +308,50 @@ export interface TaskRun {
   finished_at: string | null;
   error_message: string | null;
 }
+
+export interface StrategyWatchlistResponse {
+  snapshot_id: string;
+  raw_snapshot_id: string;
+  as_of_date: string;
+  price_basis: string;
+  supported_strategies: string[];
+  items: StrategyWatchlistItem[];
+}
+
+export interface StrategyWatchlistMutationResponse {
+  status: string;
+  item: StrategyWatchlistItem;
+}
+
+export interface StrategyWatchlistRemoveResponse {
+  symbol: string;
+  status: string;
+}
+
+export interface StrategyWatchlistItem {
+  symbol: string;
+  display_name: string;
+  exchange: string | null;
+  industry: string | null;
+  preferred_strategy_name: string;
+  strategy_name: string;
+  trade_date: string | null;
+  current_price: number | null;
+  score: number | null;
+  monitoring_status: 'BUY' | 'SELL' | 'WATCH' | 'AVOID' | 'UNAVAILABLE';
+  entry_status: string;
+  exit_status: string;
+  buy_trigger_price: number | null;
+  sell_trigger_price: number | null;
+  stop_loss_price: number | null;
+  entry_reason: string;
+  exit_reason: string;
+  thesis: string;
+  matched_rules: string[];
+  risk_flags: string[];
+  strategy_scores: Record<string, number>;
+  report_period: string | null;
+  snapshot_id: string;
+  created_at: string | null;
+  updated_at: string | null;
+}

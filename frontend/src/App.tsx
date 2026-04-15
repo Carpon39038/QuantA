@@ -3,6 +3,7 @@ import { useSnapshot } from './hooks/useSnapshot';
 import { useSystem } from './hooks/useSystem';
 import { useStock } from './hooks/useStock';
 import { useBacktest } from './hooks/useBacktest';
+import { useStrategyWatchlist } from './hooks/useStrategyWatchlist';
 import { StatusStrip } from './components/StatusStrip';
 import { TaskSidebar } from './components/TaskSidebar';
 import { MarketPanel } from './components/MarketPanel';
@@ -14,6 +15,14 @@ export default function App() {
   const { data: snapshot, loading: snapshotLoading, error: snapshotError } = useSnapshot();
   const { alerts, loading: alertsLoading } = useSystem();
   const { data: backtestDetail, loading: backtestLoading, error: backtestError } = useBacktest();
+  const {
+    items: strategyWatchItems,
+    loading: strategyWatchLoading,
+    mutating: strategyWatchMutating,
+    error: strategyWatchError,
+    add: addStrategyWatch,
+    remove: removeStrategyWatch,
+  } = useStrategyWatchlist();
 
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const { data: stockData, loading: stockLoading, error: stockError } = useStock(selectedStock);
@@ -44,6 +53,8 @@ export default function App() {
 
   if (!snapshot) return null;
 
+  const selectedStockIsMonitored = strategyWatchItems.some((item) => item.symbol === selectedStock);
+
   return (
     <div className="min-h-screen bg-black p-4 md:p-8 text-sm font-sans text-white/90">
       <div className="w-full max-w-[1600px] mx-auto h-[90vh] bg-[#1C1C1E] rounded-xl shadow-2xl border border-white/10 flex flex-col overflow-hidden">
@@ -60,8 +71,17 @@ export default function App() {
             <MarketPanel market={snapshot.market_overview} />
             <WatchlistPanel
               screener={snapshot.screener}
+              monitorItems={strategyWatchItems}
               selectedStock={selectedStock}
               onSelectStock={setSelectedStock}
+              onAddMonitor={async (symbol) => {
+                const item = await addStrategyWatch(symbol);
+                setSelectedStock(item.symbol);
+              }}
+              onRemoveMonitor={removeStrategyWatch}
+              watchlistLoading={strategyWatchLoading}
+              watchlistMutating={strategyWatchMutating}
+              watchlistError={strategyWatchError}
             />
           </div>
 
@@ -72,6 +92,20 @@ export default function App() {
               selectedSymbol={selectedStock}
               loading={stockLoading}
               error={stockError}
+              isMonitored={selectedStockIsMonitored}
+              monitoringBusy={strategyWatchMutating}
+              onToggleMonitor={async () => {
+                if (!selectedStock) return;
+                try {
+                  if (selectedStockIsMonitored) {
+                    await removeStrategyWatch(selectedStock);
+                  } else {
+                    await addStrategyWatch(selectedStock);
+                  }
+                } catch {
+                  // Error state is surfaced through the shared watchlist hook.
+                }
+              }}
             />
             <BacktestPanel
               backtest={snapshot.backtest}

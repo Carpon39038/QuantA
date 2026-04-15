@@ -19,6 +19,11 @@ from backend.app.domains.market_data.repo import (
     load_system_health,
     load_task_runs,
 )
+from backend.app.domains.strategy_watchlist.service import (
+    add_strategy_watchlist_item,
+    list_strategy_watchlist,
+    remove_strategy_watchlist_item,
+)
 from backend.app.shared.telemetry.alerts import load_recent_alerts, summarize_recent_alerts
 from backend.app.domains.screener.service import build_screener_summary
 
@@ -269,6 +274,41 @@ class QuantAContainer:
             "items": load_recent_alerts(self.settings, limit=limit),
             "alerts_path": str(self.settings.alerts_path),
             "summary": summarize_recent_alerts(self.settings, limit=max(limit, 200)),
+        }
+
+    def strategy_watchlist_payload(
+        self,
+        *,
+        snapshot_id: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            **list_strategy_watchlist(self.settings, snapshot_id=snapshot_id),
+        }
+
+    def add_strategy_watchlist_item_payload(
+        self,
+        *,
+        symbol: str,
+        preferred_strategy_name: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            "item": add_strategy_watchlist_item(
+                self.settings,
+                symbol=symbol,
+                preferred_strategy_name=preferred_strategy_name,
+            ),
+        }
+
+    def remove_strategy_watchlist_item_payload(
+        self,
+        *,
+        symbol: str,
+    ) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            **remove_strategy_watchlist_item(self.settings, symbol=symbol),
         }
 
 

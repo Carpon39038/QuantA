@@ -418,6 +418,22 @@ TABLE_DEFINITIONS: tuple[TableDefinition, ...] = (
     ),
     TableDefinition(
         group="Runs And Outputs",
+        name="strategy_watchlist",
+        description="用户手动加入的个股策略监控列表。",
+        columns=(
+            ColumnDefinition("symbol", "VARCHAR", "证券代码"),
+            ColumnDefinition(
+                "preferred_strategy_name",
+                "VARCHAR",
+                "偏好策略名称，AUTO 表示自动选择",
+            ),
+            ColumnDefinition("created_at", "TIMESTAMP", "加入监控时间"),
+            ColumnDefinition("updated_at", "TIMESTAMP", "最近更新时间"),
+        ),
+        primary_key=("symbol",),
+    ),
+    TableDefinition(
+        group="Runs And Outputs",
         name="backtest_request",
         description="持久化回测请求，当前作为本地 durable queue 的最小载体。",
         columns=(

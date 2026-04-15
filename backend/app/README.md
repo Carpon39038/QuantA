@@ -46,6 +46,7 @@
 4. 已提供 stock detail 入口：`/api/v1/stocks/{symbol}/snapshot`、`/api/v1/stocks/{symbol}/kline`、`/api/v1/stocks/{symbol}/indicators`、`/api/v1/stocks/{symbol}/capital-flow`、`/api/v1/stocks/{symbol}/fundamentals`、`/api/v1/stocks/{symbol}/disclosures`、`/api/v1/stocks/{symbol}/corporate-actions`。
 5. 已提供 screener/backtest detail 入口：`/api/v1/screener/runs/latest`、`/api/v1/screener/runs/{run_id}`、`/api/v1/backtests/runs/latest`、`/api/v1/backtests/runs/{backtest_id}`。
 6. 已提供最小 tasking/service 入口：`/api/v1/tasks/runs`、`/api/v1/system/health`、`/api/v1/system/alerts`、`POST /api/v1/tasks/daily-sync/run`、`POST /api/v1/tasks/history-backfill/run`、`POST /api/v1/tasks/daily-screener/run`、`POST /api/v1/tasks/daily-backtest/run`、`POST /api/v1/backtests/runs`；其中 `history-backfill` 现支持 `lookback_open_days` 与 `target_start_biz_date`，既可以按最新 source 日期自动解析滚动回补窗口，也可以直接指定“至少补到哪一天”。
+6.1. 已提供最小策略监控入口：`GET /api/v1/strategy-watchlist`、`POST /api/v1/strategy-watchlist`、`DELETE /api/v1/strategy-watchlist/{symbol}`；当前支持把研究池内股票加入手动监控列表，并基于内置三策略输出 `BUY / WATCH / SELL`、买点、卖点和止损位。
 7. `daily_sync` 已改成真正的 source-backed sync：会先写 `raw_snapshot` 与 `artifact_publish(status=BUILDING)`，再由 `daily_screener`、`daily_backtest` 逐步补齐产物并最终发布为 `READY`。
 8. service/backtest durable queue 现已带 `retry_count`、`max_retries`、`next_attempt_at` 与 `last_error`，worker 会执行 retry/backoff，并在耗尽时写本地 alerts JSONL。
 9. 已提供最小 `domains.tasking.scheduler` resident loop，可轮询 auto pipeline，并通过 `scripts/pipeline_smoke.py` 覆盖成功路径与 retry 路径。
@@ -84,3 +85,4 @@
 36. 官方披露 sidecar 现已按 `CNInfo official search + stock lookup JSON` 接入 `official_disclosure_item`，并通过 stock disclosures API 与 workbench 暴露最小公告元数据；默认 `fixture_json` 开发链会从 `backend/app/fixtures/source_disclosures/` 读取本地披露 fixture，live `tushare`/`akshare` 则默认走 `cninfo`。
 37. 当前官方披露接入仍是“公告元数据优先”，主要覆盖标题、公告时间、详情链接和 PDF 链接；公告正文抽取、交易所问询和更丰富的披露分类仍在后续范围内。
 38. `/api/v1/system/health` 与 `/api/v1/system/alerts` 现在会返回 `alert_summary`，聚合最近窗口里的 severity、alert type 和 provider incidents；前端除了呈现最新 provider degradation，也会直接显示最新 `history_coverage` 与建议的下一次 target start date，而不只是一串原始 alerts。
+39. `strategy_watchlist` 目前是面向 workbench 的最小“个股盯盘队列”：你可以手动加入股票，系统会在最新 `READY snapshot` 上自动选取最匹配的内置策略，并给出当前价、买点、卖点、止损位与 `BUY / WATCH / SELL` 判断；当盘后新 snapshot 触发新的 `BUY` 或 `SELL` 状态时，也会写入本地 alerts JSONL，并直接出现在前端告警侧栏里。
