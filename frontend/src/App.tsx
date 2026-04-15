@@ -54,6 +54,8 @@ export default function App() {
   if (!snapshot) return null;
 
   const selectedStockIsMonitored = strategyWatchItems.some((item) => item.symbol === selectedStock);
+  const selectedMonitorItem =
+    strategyWatchItems.find((item) => item.symbol === selectedStock) ?? null;
 
   return (
     <div className="min-h-screen bg-black p-4 md:p-8 text-sm font-sans text-white/90">
@@ -93,6 +95,7 @@ export default function App() {
               loading={stockLoading}
               error={stockError}
               isMonitored={selectedStockIsMonitored}
+              monitorItem={selectedMonitorItem}
               monitoringBusy={strategyWatchMutating}
               onToggleMonitor={async () => {
                 if (!selectedStock) return;

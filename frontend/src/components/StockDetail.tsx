@@ -3,6 +3,7 @@ import {
   CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts';
 import type { StockData } from '../hooks/useStock';
+import type { StrategyWatchlistItem } from '../api/types';
 import { cn } from '../lib/cn';
 import { QuoteItem } from './ui/QuoteItem';
 import { TechItem } from './ui/TechItem';
@@ -13,6 +14,7 @@ interface StockDetailProps {
   loading?: boolean;
   error?: string | null;
   isMonitored?: boolean;
+  monitorItem?: StrategyWatchlistItem | null;
   monitoringBusy?: boolean;
   onToggleMonitor?: () => Promise<void>;
 }
@@ -40,6 +42,7 @@ export function StockDetail({
   loading,
   error,
   isMonitored,
+  monitorItem,
   monitoringBusy,
   onToggleMonitor,
 }: StockDetailProps) {
@@ -91,6 +94,14 @@ export function StockDetail({
 
   // Fundamentals
   const fund = fundamentals?.latest_fundamental_feature;
+  const monitorTone =
+    monitorItem?.monitoring_status === 'BUY'
+      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+      : monitorItem?.monitoring_status === 'SELL'
+        ? 'border-rose-500/25 bg-rose-500/10 text-rose-200'
+        : monitorItem?.monitoring_status === 'WATCH'
+          ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
+          : 'border-white/10 bg-white/[0.03] text-white/70';
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
@@ -131,6 +142,37 @@ export function StockDetail({
           </div>
         </div>
       </div>
+
+      {monitorItem && (
+        <div className={`rounded-xl border p-3 ${monitorTone}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-white/45">
+                策略监控
+              </div>
+              <div className="mt-1 text-sm font-medium text-white/90">
+                {monitorItem.strategy_name} · {monitorItem.monitoring_status}
+              </div>
+            </div>
+            <div className="text-right text-[10px] text-white/55">
+              <div>快照 {monitorItem.snapshot_id}</div>
+              <div>{monitorItem.trade_date ?? '--'}</div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-[11px] md:grid-cols-4">
+            <div>买点 {formatNum(monitorItem.buy_trigger_price)}</div>
+            <div>止盈 {formatNum(monitorItem.sell_trigger_price)}</div>
+            <div>风控 {formatNum(monitorItem.defensive_exit_price)}</div>
+            <div>止损 {formatNum(monitorItem.stop_loss_price)}</div>
+          </div>
+          <div className="mt-3 text-[11px] leading-relaxed text-white/75">
+            {monitorItem.entry_reason}
+          </div>
+          <div className="mt-1 text-[11px] leading-relaxed text-white/60">
+            {monitorItem.exit_reason}
+          </div>
+        </div>
+      )}
 
       {/* Quote Grid */}
       <div className="grid grid-cols-4 gap-3">

@@ -183,9 +183,10 @@ def emit_strategy_watchlist_alerts(
         current_price = item.get("current_price")
         buy_trigger_price = item.get("buy_trigger_price")
         sell_trigger_price = item.get("sell_trigger_price")
+        defensive_exit_price = item.get("defensive_exit_price")
         strategy_name = str(item.get("strategy_name") or "AUTO")
         display_name = str(item.get("display_name") or item["symbol"])
-        action_label = "买点触发" if monitoring_status == "BUY" else "卖点触发"
+        action_label = "买点触发" if monitoring_status == "BUY" else "风控离场触发"
         emit_alert(
             settings,
             alert_type="strategy_watchlist_signal",
@@ -194,7 +195,8 @@ def emit_strategy_watchlist_alerts(
                 f"{action_label}: {display_name}({strategy_name}) "
                 f"当前价 {current_price if current_price is not None else '--'} "
                 f"买点 {buy_trigger_price if buy_trigger_price is not None else '--'} / "
-                f"卖点 {sell_trigger_price if sell_trigger_price is not None else '--'}"
+                f"止盈 {sell_trigger_price if sell_trigger_price is not None else '--'} / "
+                f"风控 {defensive_exit_price if defensive_exit_price is not None else '--'}"
             ),
             detail={
                 "symbol": str(item["symbol"]),
@@ -206,6 +208,7 @@ def emit_strategy_watchlist_alerts(
                 "current_price": current_price,
                 "buy_trigger_price": buy_trigger_price,
                 "sell_trigger_price": sell_trigger_price,
+                "defensive_exit_price": defensive_exit_price,
                 "stop_loss_price": item.get("stop_loss_price"),
                 "entry_reason": item.get("entry_reason"),
                 "exit_reason": item.get("exit_reason"),
@@ -540,9 +543,10 @@ def _build_watchlist_item(
             "exit_status": "UNAVAILABLE",
             "buy_trigger_price": None,
             "sell_trigger_price": None,
+            "defensive_exit_price": None,
             "stop_loss_price": None,
             "entry_reason": "当前快照中没有这只股票的分析产物。",
-            "exit_reason": "缺少最新分析产物，无法判断卖点。",
+            "exit_reason": "缺少最新分析产物，无法判断止盈或风控位。",
             "thesis": "当前研究池没有这只股票的最新分析结果。",
             "matched_rules": [],
             "risk_flags": ["不在当前研究池或最新快照缺失"],
@@ -632,39 +636,59 @@ def _build_watchlist_item(
 
     if strategy_name == "趋势突破":
         buy_trigger_price = round(previous_high or float(ma5 or current_price) * 1.01, 2)
-        sell_trigger_price = round(float(ma10 or ma20 or current_price) * 0.995, 2)
-        stop_loss_price = round(min(float(ma10 or current_price), current_price * 0.95), 2)
+        sell_trigger_price, defensive_exit_price, stop_loss_price = _build_trade_plan_prices(
+            buy_trigger_price=buy_trigger_price,
+            defensive_exit_price=float(ma10 or ma20 or current_price) * 0.995,
+            hard_stop_price=min(float(ma10 or current_price), current_price * 0.95),
+            minimum_risk_pct=0.035,
+            reward_multiple=2.0,
+        )
         entry_triggered = breakout_condition and float(macd_hist or 0.0) >= 0.0
-        exit_triggered = current_price < float(ma10 or ma5 or current_price) or (
+        exit_triggered = current_price < defensive_exit_price or (
             float(macd_hist or 0.0) < 0.0 and current_price < float(ma5 or current_price)
         )
         entry_reason = (
             f"突破买点关注 {buy_trigger_price}，要求站上前高/MA5 且 MACD 不转弱。"
         )
         exit_reason = (
-            f"卖点关注 {sell_trigger_price}，若跌回 MA10 下方或 MACD 转弱则减仓/离场。"
+            f"止盈先看 {sell_trigger_price}，若跌破风控线 {defensive_exit_price} "
+            f"或 MACD 转弱则减仓/离场。"
         )
     elif strategy_name == "放量启动":
         buy_trigger_price = round(
             max(float(previous_close or current_price), float(ma5 or current_price)),
             2,
         )
-        sell_trigger_price = round(float(ma5 or ma10 or current_price) * 0.995, 2)
-        stop_loss_price = round(min(float(ma5 or current_price), current_price * 0.95), 2)
+        sell_trigger_price, defensive_exit_price, stop_loss_price = _build_trade_plan_prices(
+            buy_trigger_price=buy_trigger_price,
+            defensive_exit_price=float(ma5 or ma10 or current_price) * 0.995,
+            hard_stop_price=min(float(ma5 or current_price), current_price * 0.95),
+            minimum_risk_pct=0.03,
+            reward_multiple=1.8,
+        )
         entry_triggered = volume_condition and current_price >= float(ma5 or current_price)
-        exit_triggered = current_price < float(ma5 or current_price) or float(volume_ratio or 1.0) < 0.9
+        exit_triggered = (
+            current_price < defensive_exit_price
+            or float(volume_ratio or 1.0) < 0.9
+        )
         entry_reason = (
             f"放量启动买点关注 {buy_trigger_price}，需要量比放大且收盘维持在 MA5 上方。"
         )
         exit_reason = (
-            f"卖点关注 {sell_trigger_price}，若缩量失守 MA5 或量能回落过快则离场。"
+            f"止盈先看 {sell_trigger_price}，若缩量跌破风控线 {defensive_exit_price} "
+            f"或量能回落过快则离场。"
         )
     else:
         buy_trigger_price = round(float(ma5 or current_price), 2)
-        sell_trigger_price = round(float(ma10 or ma20 or current_price) * 0.995, 2)
-        stop_loss_price = round(min(float(ma10 or current_price), current_price * 0.94), 2)
+        sell_trigger_price, defensive_exit_price, stop_loss_price = _build_trade_plan_prices(
+            buy_trigger_price=buy_trigger_price,
+            defensive_exit_price=float(ma10 or ma20 or current_price) * 0.995,
+            hard_stop_price=min(float(ma10 or current_price), current_price * 0.94),
+            minimum_risk_pct=0.04,
+            reward_multiple=2.0,
+        )
         entry_triggered = capital_condition and current_price >= float(ma5 or current_price)
-        exit_triggered = current_price < float(ma10 or ma5 or current_price) or (
+        exit_triggered = current_price < defensive_exit_price or (
             float(main_net_inflow_ratio or 0.0) <= 0.0
             and float(northbound_net_inflow or 0.0) <= 0.0
         )
@@ -672,7 +696,8 @@ def _build_watchlist_item(
             f"资金共振买点关注 {buy_trigger_price}，要求主力与北向同向净流入且价格不弱于 MA5。"
         )
         exit_reason = (
-            f"卖点关注 {sell_trigger_price}，若资金共振消失或跌回 MA10 下方则离场。"
+            f"止盈先看 {sell_trigger_price}，若资金共振消失或跌破风控线 {defensive_exit_price} "
+            f"则离场。"
         )
 
     matched_rules = [
@@ -746,6 +771,7 @@ def _build_watchlist_item(
         "exit_status": exit_status,
         "buy_trigger_price": buy_trigger_price,
         "sell_trigger_price": sell_trigger_price,
+        "defensive_exit_price": defensive_exit_price,
         "stop_loss_price": stop_loss_price,
         "entry_reason": entry_reason,
         "exit_reason": exit_reason,
@@ -912,6 +938,31 @@ def _normalize_preferred_strategy_name(raw_name: object) -> str:
 
 def _clamp_score(value: float) -> float:
     return max(0.0, min(100.0, value))
+
+
+def _build_trade_plan_prices(
+    *,
+    buy_trigger_price: float,
+    defensive_exit_price: float,
+    hard_stop_price: float,
+    minimum_risk_pct: float,
+    reward_multiple: float,
+) -> tuple[float, float, float]:
+    normalized_buy = round(max(float(buy_trigger_price), 0.01), 2)
+    normalized_defensive_exit = min(
+        round(float(defensive_exit_price), 2),
+        round(normalized_buy * 0.995, 2),
+    )
+    normalized_stop_loss = min(
+        round(float(hard_stop_price), 2),
+        normalized_defensive_exit,
+    )
+    risk_per_share = max(
+        round(normalized_buy - normalized_stop_loss, 2),
+        round(normalized_buy * minimum_risk_pct, 2),
+    )
+    take_profit_price = round(normalized_buy + risk_per_share * reward_multiple, 2)
+    return take_profit_price, normalized_defensive_exit, normalized_stop_loss
 
 
 def _decode_json_text(raw_value: object, default: object) -> object:

@@ -343,6 +343,7 @@ export interface StrategyWatchlistItem {
   exit_status: string;
   buy_trigger_price: number | null;
   sell_trigger_price: number | null;
+  defensive_exit_price: number | null;
   stop_loss_price: number | null;
   entry_reason: string;
   exit_reason: string;

@@ -137,7 +137,10 @@ export function WatchlistPanel({
               <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-white/55">
                 <div>当前价 {item.current_price ?? '--'}</div>
                 <div>买点 {item.buy_trigger_price ?? '--'}</div>
-                <div>卖点 {item.sell_trigger_price ?? '--'}</div>
+                <div>止盈 {item.sell_trigger_price ?? '--'}</div>
+              </div>
+              <div className="mt-1 text-[10px] text-white/45">
+                风控 {item.defensive_exit_price ?? '--'} · 止损 {item.stop_loss_price ?? '--'}
               </div>
               <div className="mt-2 text-[11px] text-white/55 leading-relaxed">{item.thesis}</div>
             </div>
