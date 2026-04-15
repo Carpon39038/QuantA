@@ -33,7 +33,9 @@ REQUIRED_FILES = [
     "scripts/app_smoke.py",
     "scripts/run_frontend.py",
     "backend/app/api/dev_server.py",
-    "frontend/src/app/index.html",
+    "frontend/index.html",
+    "frontend/src/main.tsx",
+    "frontend/src/App.tsx",
 ]
 
 

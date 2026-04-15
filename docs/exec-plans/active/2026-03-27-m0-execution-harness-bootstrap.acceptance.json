@@ -2,7 +2,7 @@
   "plan_id": "2026-03-27-m0-execution-harness-bootstrap",
   "title": "M0 Execution Harness Bootstrap",
   "status": "active",
-  "updated_at": "2026-03-27",
+  "updated_at": "2026-04-15",
   "items": [
     {
       "id": "EH-001",
@@ -71,7 +71,7 @@
       "id": "EH-005",
       "title": "DuckDB-backed backend and frontend dev skeletons can start",
       "priority": 1,
-      "description": "QuantA has deterministic backend/frontend dev commands, runtime directory bootstrap, a local DuckDB-backed latest snapshot path, and a snapshot-driven workbench shell that can be exercised by smoke tests.",
+      "description": "QuantA has deterministic backend/frontend dev commands, runtime directory bootstrap, a local DuckDB-backed latest snapshot path, and a React + Vite workbench shell with a stable frontend health endpoint that can be exercised by smoke tests.",
       "artifacts": [
         "pyproject.toml",
         "package.json",
@@ -81,9 +81,11 @@
         "backend/app/domains/market_data/bootstrap.py",
         "backend/app/domains/market_data/schema.py",
         "backend/app/fixtures/published_snapshot.json",
-        "frontend/src/app/index.html",
-        "frontend/src/app/main.css",
-        "frontend/src/app/main.js",
+        "frontend/index.html",
+        "frontend/src/index.css",
+        "frontend/src/main.tsx",
+        "frontend/src/App.tsx",
+        "frontend/vite.config.ts",
         "scripts/run_frontend.py",
         "scripts/app_smoke.py"
       ],

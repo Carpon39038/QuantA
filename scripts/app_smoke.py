@@ -193,6 +193,7 @@ def main() -> int:
             frontend_log,
         )
         wait_for("frontend health", f"{frontend_origin}/health")
+        frontend_health_payload = fetch_json(f"{frontend_origin}/health")
 
         backend_payload = fetch_json(f"{backend_origin}/api/v1/snapshot/latest")
         frontend_proxy_payload = fetch_json(f"{frontend_origin}/api/v1/snapshot/latest")
@@ -309,9 +310,13 @@ def main() -> int:
             f"{backend_origin}/api/v1/backtests/runs/{backtest_post_payload['backtest']['backtest_id']}"
         )
         frontend_html = fetch_text(f"{frontend_origin}/")
-        frontend_js = fetch_text(f"{frontend_origin}/main.js")
+        frontend_entry = fetch_text(f"{frontend_origin}/src/main.tsx")
 
         assert backend_payload["status"] == "READY"
+        assert frontend_health_payload["status"] == "ok"
+        assert frontend_health_payload["service"] == "quanta-frontend"
+        assert frontend_health_payload["frontend_origin"] == frontend_origin
+        assert frontend_health_payload["backend_origin"] == backend_origin
         assert backend_payload["snapshot_id"] == frontend_proxy_payload["snapshot_id"]
         assert backend_payload["market_overview"]["trade_date"] == "2026-03-27"
         assert backend_payload["runtime"]["duckdb_path"].endswith("quanta.duckdb")
@@ -472,13 +477,12 @@ def main() -> int:
         assert processed_backtest_payload["status"] == "SUCCESS"
         assert len(processed_backtest_payload["trades"]) >= 4
         assert len(processed_backtest_payload["equity_curve"]) >= 3
-        assert "QuantA" in frontend_html
-        assert "fetchLatestSnapshot" in frontend_js
-        assert "观察名单" in frontend_html
-        assert "个股详情" in frontend_html
-        assert "价格轨迹" in frontend_html
-        assert "财务侧" in frontend_html
-        assert "官方披露" in frontend_html
+        assert "<div id=\"root\"></div>" in frontend_html
+        assert "/@vite/client" in frontend_html
+        assert "/src/main.tsx" in frontend_html
+        assert "createRoot" in frontend_entry
+        assert "StrictMode" in frontend_entry
+        assert "App" in frontend_entry
 
         print("[app-smoke] backend and frontend are healthy")
         print(
