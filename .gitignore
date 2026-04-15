@@ -1,5 +1,7 @@
 mydoc
 __pycache__/
 .pytest_cache/
+.eslintcache
+node_modules/
 data/
 .worktrees/
