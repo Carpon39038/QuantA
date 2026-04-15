@@ -953,10 +953,13 @@ def _build_trade_plan_prices(
         round(float(defensive_exit_price), 2),
         round(normalized_buy * 0.995, 2),
     )
-    normalized_stop_loss = min(
-        round(float(hard_stop_price), 2),
-        normalized_defensive_exit,
-    )
+    minimum_warning_gap = max(round(normalized_buy * 0.01, 2), 0.2)
+    normalized_stop_loss = round(float(hard_stop_price), 2)
+    if normalized_stop_loss >= normalized_defensive_exit:
+        normalized_stop_loss = round(
+            max(normalized_defensive_exit - minimum_warning_gap, 0.01),
+            2,
+        )
     risk_per_share = max(
         round(normalized_buy - normalized_stop_loss, 2),
         round(normalized_buy * minimum_risk_pct, 2),

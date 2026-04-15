@@ -431,6 +431,14 @@ def main() -> int:
                 strategy_watch_add_payload["item"]["defensive_exit_price"]
                 <= strategy_watch_add_payload["item"]["buy_trigger_price"]
             )
+        if (
+            strategy_watch_add_payload["item"]["stop_loss_price"] is not None
+            and strategy_watch_add_payload["item"]["defensive_exit_price"] is not None
+        ):
+            assert (
+                strategy_watch_add_payload["item"]["stop_loss_price"]
+                < strategy_watch_add_payload["item"]["defensive_exit_price"]
+            )
         assert any(
             item["symbol"] == "300750.SZ"
             for item in strategy_watchlist_payload["items"]
