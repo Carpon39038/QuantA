@@ -112,6 +112,7 @@ pnpm run ops:after-close
 curl -s http://127.0.0.1:8765/api/v1/system/health
 curl -s http://127.0.0.1:8765/api/v1/system/alerts
 curl -s http://127.0.0.1:8765/api/v1/runtime
+curl -s http://127.0.0.1:8765/api/v1/preview/watchlist
 ```
 
 如果你按 `ops/live.env.example` 安装了 live runtime，对应健康检查地址会变成：
@@ -120,6 +121,7 @@ curl -s http://127.0.0.1:8765/api/v1/runtime
 curl -s http://127.0.0.1:18765/api/v1/system/health
 curl -s http://127.0.0.1:18765/api/v1/system/alerts
 curl -s http://127.0.0.1:18765/api/v1/runtime
+curl -s http://127.0.0.1:18765/api/v1/preview/watchlist
 ```
 
 如果想让 doctor 顺手请求 live source 并检查最新 READY 是否落后：

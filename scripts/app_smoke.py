@@ -243,6 +243,12 @@ def main() -> int:
         frontend_strategy_watchlist_payload = fetch_json(
             f"{frontend_origin}/api/v1/strategy-watchlist"
         )
+        intraday_preview_payload = fetch_json(
+            f"{backend_origin}/api/v1/preview/watchlist"
+        )
+        frontend_intraday_preview_payload = fetch_json(
+            f"{frontend_origin}/api/v1/preview/watchlist"
+        )
         screener_latest_payload = fetch_json(f"{backend_origin}/api/v1/screener/runs/latest")
         screener_results_payload = fetch_json(
             f"{backend_origin}/api/v1/screener/runs/{screener_latest_payload['run_id']}/results"
@@ -447,6 +453,17 @@ def main() -> int:
         assert any(
             item["symbol"] == "300750.SZ"
             for item in frontend_strategy_watchlist_payload["items"]
+        )
+        assert intraday_preview_payload["source_status"]["provider"] == "fixture_json"
+        assert intraday_preview_payload["source_status"]["mode"] == "fixture"
+        assert any(
+            item["symbol"] == "300750.SZ"
+            for item in intraday_preview_payload["items"]
+        )
+        assert frontend_intraday_preview_payload["source_status"]["provider"] == "fixture_json"
+        assert any(
+            item["symbol"] == "300750.SZ"
+            for item in frontend_intraday_preview_payload["items"]
         )
         assert screener_latest_payload["run_id"].startswith("screener_run_")
         assert screener_latest_payload["result_count"] == len(screener_latest_payload["results"])

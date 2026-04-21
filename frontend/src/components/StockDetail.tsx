@@ -3,7 +3,7 @@ import {
   CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts';
 import type { StockData } from '../hooks/useStock';
-import type { StrategyWatchlistItem } from '../api/types';
+import type { IntradayPreviewItem, StrategyWatchlistItem } from '../api/types';
 import { cn } from '../lib/cn';
 import { QuoteItem } from './ui/QuoteItem';
 import { TechItem } from './ui/TechItem';
@@ -15,6 +15,7 @@ interface StockDetailProps {
   error?: string | null;
   isMonitored?: boolean;
   monitorItem?: StrategyWatchlistItem | null;
+  intradayMonitorItem?: IntradayPreviewItem | null;
   monitoringBusy?: boolean;
   onToggleMonitor?: () => Promise<void>;
 }
@@ -43,6 +44,7 @@ export function StockDetail({
   error,
   isMonitored,
   monitorItem,
+  intradayMonitorItem,
   monitoringBusy,
   onToggleMonitor,
 }: StockDetailProps) {
@@ -164,6 +166,20 @@ export function StockDetail({
             <div>止盈 {formatNum(monitorItem.sell_trigger_price)}</div>
             <div>风控 {formatNum(monitorItem.defensive_exit_price)}</div>
             <div>止损 {formatNum(monitorItem.stop_loss_price)}</div>
+          </div>
+          <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-white/70">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                盘中价 {formatNum(intradayMonitorItem?.realtime_price)}
+                {intradayMonitorItem?.realtime_pct_chg != null && ` (${intradayMonitorItem.realtime_pct_chg > 0 ? '+' : ''}${intradayMonitorItem.realtime_pct_chg.toFixed(2)}%)`}
+              </div>
+              <div className="text-[10px] text-white/45">
+                {intradayMonitorItem?.realtime_trade_time ?? '无盘中时间'}
+              </div>
+            </div>
+            <div className="mt-1 text-[10px] text-white/55">
+              {intradayMonitorItem?.signal_message ?? '等待盘中预览刷新。'}
+            </div>
           </div>
           <div className="mt-3 text-[11px] leading-relaxed text-white/75">
             {monitorItem.entry_reason}

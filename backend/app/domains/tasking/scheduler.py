@@ -7,6 +7,7 @@ import sys
 import time
 
 from backend.app.app_wiring.settings import AppSettings, load_settings
+from backend.app.domains.intraday_monitor.service import run_intraday_monitor_tick
 from backend.app.domains.market_data.repo import load_system_health
 from backend.app.domains.market_data.sync import (
     latest_source_biz_date,
@@ -118,10 +119,12 @@ def run_scheduler_tick(
     )
     service_summary = process_service_queue(settings, limit=service_limit)
     backtest_summary = process_backtest_queue(settings, limit=backtest_limit)
+    intraday_monitor_summary = run_intraday_monitor_tick(settings)
     return {
         "pipeline": pipeline_action,
         "service_worker": service_summary,
         "backtest_worker": backtest_summary,
+        "intraday_monitor": intraday_monitor_summary,
         "settled": is_pipeline_settled(settings),
     }
 
@@ -227,6 +230,7 @@ def _build_scheduler_loop_error_tick(exc: Exception) -> dict[str, object]:
         },
         "service_worker": None,
         "backtest_worker": None,
+        "intraday_monitor": None,
         "settled": False,
         "error": {
             "type": exc.__class__.__name__,

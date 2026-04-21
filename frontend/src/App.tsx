@@ -3,6 +3,7 @@ import { useSnapshot } from './hooks/useSnapshot';
 import { useSystem } from './hooks/useSystem';
 import { useStock } from './hooks/useStock';
 import { useBacktest } from './hooks/useBacktest';
+import { useIntradayPreviewWatchlist } from './hooks/useIntradayPreviewWatchlist';
 import { useStrategyWatchlist } from './hooks/useStrategyWatchlist';
 import { StatusStrip } from './components/StatusStrip';
 import { TaskSidebar } from './components/TaskSidebar';
@@ -15,6 +16,11 @@ export default function App() {
   const { data: snapshot, loading: snapshotLoading, error: snapshotError } = useSnapshot();
   const { alerts, loading: alertsLoading } = useSystem();
   const { data: backtestDetail, loading: backtestLoading, error: backtestError } = useBacktest();
+  const {
+    data: intradayPreview,
+    loading: intradayPreviewLoading,
+    error: intradayPreviewError,
+  } = useIntradayPreviewWatchlist();
   const {
     items: strategyWatchItems,
     loading: strategyWatchLoading,
@@ -56,6 +62,13 @@ export default function App() {
   const selectedStockIsMonitored = strategyWatchItems.some((item) => item.symbol === selectedStock);
   const selectedMonitorItem =
     strategyWatchItems.find((item) => item.symbol === selectedStock) ?? null;
+  const intradayItems = intradayPreview?.items ?? [];
+  const intradayItemBySymbol = new Map(
+    intradayItems.map((item) => [item.symbol, item]),
+  );
+  const selectedIntradayItem = selectedStock
+    ? intradayItemBySymbol.get(selectedStock) ?? null
+    : null;
 
   return (
     <div className="min-h-screen bg-black p-4 md:p-8 text-sm font-sans text-white/90">
@@ -84,6 +97,10 @@ export default function App() {
               watchlistLoading={strategyWatchLoading}
               watchlistMutating={strategyWatchMutating}
               watchlistError={strategyWatchError}
+              intradayItemsBySymbol={intradayItemBySymbol}
+              intradaySourceStatus={intradayPreview?.source_status ?? null}
+              intradayLoading={intradayPreviewLoading}
+              intradayError={intradayPreviewError}
             />
           </div>
 
@@ -96,6 +113,7 @@ export default function App() {
               error={stockError}
               isMonitored={selectedStockIsMonitored}
               monitorItem={selectedMonitorItem}
+              intradayMonitorItem={selectedIntradayItem}
               monitoringBusy={strategyWatchMutating}
               onToggleMonitor={async () => {
                 if (!selectedStock) return;

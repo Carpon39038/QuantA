@@ -63,11 +63,14 @@ class AppSettings:
     logs_dir: Path
     queue_dir: Path
     alerts_path: Path
+    intraday_preview_state_path: Path
+    intraday_preview_fixture_path: Path
     fixture_path: Path
     source_fixture_dir: Path
     disclosure_fixture_dir: Path
     corporate_action_fixture_dir: Path
     source_provider: str
+    intraday_preview_provider: str
     disclosure_provider: str
     corporate_action_provider: str
     source_universe: str
@@ -78,10 +81,12 @@ class AppSettings:
     source_validation_amount_tolerance_bps: int
     tushare_token: str | None
     tushare_exchange: str
+    intraday_preview_tushare_src: str
     source_fail_first_n: int
     task_max_retries: int
     task_retry_backoff_seconds: int
     scheduler_poll_interval_seconds: int
+    intraday_preview_poll_interval_seconds: int
     history_backfill_target_open_days: int
     history_backfill_target_start_biz_date: str | None
     backend_host: str
@@ -128,6 +133,20 @@ def load_settings() -> AppSettings:
             data_dir,
             os.environ.get("QUANTA_ALERTS_PATH", "logs/alerts.jsonl"),
         ),
+        intraday_preview_state_path=_resolve_data_path(
+            data_dir,
+            os.environ.get(
+                "QUANTA_INTRADAY_PREVIEW_STATE_PATH",
+                "intraday-preview-state.json",
+            ),
+        ),
+        intraday_preview_fixture_path=_resolve_runtime_path(
+            root_dir,
+            os.environ.get(
+                "QUANTA_INTRADAY_PREVIEW_FIXTURE_PATH",
+                "backend/app/fixtures/intraday_preview_quotes.json",
+            ),
+        ),
         fixture_path=root_dir / "backend/app/fixtures/published_snapshot.json",
         source_fixture_dir=_resolve_runtime_path(
             root_dir,
@@ -151,6 +170,10 @@ def load_settings() -> AppSettings:
             ),
         ),
         source_provider=os.environ.get("QUANTA_SOURCE_PROVIDER", "fixture_json"),
+        intraday_preview_provider=os.environ.get(
+            "QUANTA_INTRADAY_PREVIEW_PROVIDER",
+            "auto",
+        ),
         disclosure_provider=os.environ.get("QUANTA_DISCLOSURE_PROVIDER", "auto"),
         corporate_action_provider=os.environ.get(
             "QUANTA_CORPORATE_ACTION_PROVIDER",
@@ -178,6 +201,10 @@ def load_settings() -> AppSettings:
         ),
         tushare_token=_parse_optional_str("QUANTA_TUSHARE_TOKEN"),
         tushare_exchange=os.environ.get("QUANTA_TUSHARE_EXCHANGE", "SSE"),
+        intraday_preview_tushare_src=os.environ.get(
+            "QUANTA_INTRADAY_PREVIEW_TUSHARE_SRC",
+            "sina",
+        ),
         source_fail_first_n=_parse_int("QUANTA_SOURCE_FAIL_FIRST_N", 0),
         task_max_retries=_parse_int("QUANTA_TASK_MAX_RETRIES", 2),
         task_retry_backoff_seconds=_parse_int(
@@ -187,6 +214,10 @@ def load_settings() -> AppSettings:
         scheduler_poll_interval_seconds=_parse_int(
             "QUANTA_SCHEDULER_POLL_INTERVAL_SECONDS",
             5,
+        ),
+        intraday_preview_poll_interval_seconds=_parse_int(
+            "QUANTA_INTRADAY_PREVIEW_POLL_INTERVAL_SECONDS",
+            15,
         ),
         history_backfill_target_open_days=_parse_int(
             "QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS",

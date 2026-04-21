@@ -280,6 +280,8 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         "duckdb_path": str(container.settings.duckdb_path),
                         "seed_fixture_path": str(container.settings.fixture_path),
                         "alerts_path": str(container.settings.alerts_path),
+                        "intraday_preview_provider": container.settings.intraday_preview_provider,
+                        "intraday_preview_poll_interval_seconds": container.settings.intraday_preview_poll_interval_seconds,
                         "source_provider": container.settings.source_provider,
                         "corporate_action_provider": container.settings.corporate_action_provider,
                         "source_universe": container.settings.source_universe,
@@ -323,6 +325,13 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                     container.strategy_watchlist_payload(
                         snapshot_id=_query_value(query, "snapshot_id"),
                     ),
+                )
+                return
+
+            if parsed.path == "/api/v1/preview/watchlist":
+                self._send_json(
+                    200,
+                    container.intraday_preview_watchlist_payload(),
                 )
                 return
 
@@ -518,6 +527,13 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                         {"error": "bad_request", "message": str(exc)},
                     )
                     return
+
+            if parsed.path == "/api/v1/preview/watchlist/run-check":
+                self._send_json(
+                    200,
+                    container.run_intraday_monitor_tick_payload(),
+                )
+                return
 
             self._send_json(404, {"error": "not_found", "path": parsed.path})
 

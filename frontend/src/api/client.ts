@@ -25,6 +25,7 @@ export const api = {
   systemHealth: () => fetchJson<import('./types').SystemHealthResponse>('/api/v1/system/health'),
   alerts: () => fetchJson<import('./types').AlertsResponse>('/api/v1/system/alerts'),
   strategyWatchlist: () => fetchJson<import('./types').StrategyWatchlistResponse>('/api/v1/strategy-watchlist'),
+  intradayPreviewWatchlist: () => fetchJson<import('./types').IntradayPreviewWatchlistResponse>('/api/v1/preview/watchlist'),
   addStrategyWatch: (symbol: string) => sendJson<import('./types').StrategyWatchlistMutationResponse>(
     '/api/v1/strategy-watchlist',
     'POST',

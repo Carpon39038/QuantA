@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from backend.app.app_wiring.settings import AppSettings, load_settings
 from backend.app.domains.analysis.service import build_market_overview
 from backend.app.domains.backtest.service import build_backtest_summary
+from backend.app.domains.intraday_monitor.service import (
+    preview_strategy_watchlist,
+    run_intraday_monitor_tick,
+)
 from backend.app.domains.market_data.repo import (
     load_backtest_run,
     load_latest_published_snapshot,
@@ -55,6 +59,8 @@ class QuantAContainer:
                 "duckdb_path": str(self.settings.duckdb_path),
                 "seed_fixture_path": str(self.settings.fixture_path),
                 "alerts_path": str(self.settings.alerts_path),
+                "intraday_preview_provider": self.settings.intraday_preview_provider,
+                "intraday_preview_poll_interval_seconds": self.settings.intraday_preview_poll_interval_seconds,
                 "source_provider": self.settings.source_provider,
                 "corporate_action_provider": self.settings.corporate_action_provider,
                 "source_universe": self.settings.source_universe,
@@ -309,6 +315,20 @@ class QuantAContainer:
         return {
             "api_contract_version": "0.1",
             **remove_strategy_watchlist_item(self.settings, symbol=symbol),
+        }
+
+    def intraday_preview_watchlist_payload(
+        self,
+    ) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            **preview_strategy_watchlist(self.settings),
+        }
+
+    def run_intraday_monitor_tick_payload(self) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            **run_intraday_monitor_tick(self.settings),
         }
 
 

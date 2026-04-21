@@ -111,6 +111,7 @@ data/        本地运行时数据目录（已 gitignore）
 3. 自动推进历史回补、analysis、screener、backtest 和发布
 4. 用 workbench 查看最新 `READY snapshot`
 5. 手动把研究池内股票加入策略监控队列，并基于内置三策略查看 `BUY / WATCH / SELL`、买点、止盈位和风控线
+6. 在盘中用 experimental 预览层轮询手动监控池，实时看盘中价、买点/止盈/风控/止损触发状态，并把提醒写入 alerts
 6. 在本机以 launchd / daemon 方式常驻运行
 
 仍未纳入当前默认正式链的能力包括：

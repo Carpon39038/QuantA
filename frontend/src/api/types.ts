@@ -356,3 +356,51 @@ export interface StrategyWatchlistItem {
   created_at: string | null;
   updated_at: string | null;
 }
+
+export interface IntradayPreviewSourceStatus {
+  provider: string;
+  mode: string;
+  status: string;
+  message: string;
+  market_phase: string;
+  session_active: boolean;
+  poll_interval_seconds: number;
+  last_updated_at: string | null;
+  quote_count?: number;
+  watchlist_count?: number;
+}
+
+export interface IntradayThresholdFlags {
+  buy_triggered: boolean;
+  take_profit_triggered: boolean;
+  risk_warning_triggered: boolean;
+  stop_loss_triggered: boolean;
+}
+
+export interface IntradayPreviewItem extends StrategyWatchlistItem {
+  realtime_price: number | null;
+  realtime_pct_chg: number | null;
+  realtime_trade_date: string | null;
+  realtime_trade_time: string | null;
+  realtime_updated_at: string | null;
+  realtime_source: string | null;
+  realtime_status: string;
+  signal_stage:
+    | 'BUY_TRIGGERED'
+    | 'TAKE_PROFIT_TRIGGERED'
+    | 'RISK_WARNING'
+    | 'STOP_LOSS_TRIGGERED'
+    | 'WATCHING'
+    | 'UNAVAILABLE';
+  signal_message: string;
+  threshold_flags: IntradayThresholdFlags;
+}
+
+export interface IntradayPreviewWatchlistResponse {
+  snapshot_id: string;
+  raw_snapshot_id: string;
+  as_of_date: string;
+  items: IntradayPreviewItem[];
+  source_status: IntradayPreviewSourceStatus;
+  emitted_alerts?: string[];
+}

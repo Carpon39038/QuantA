@@ -104,4 +104,21 @@ QuantA 当前的 workbench 是 `snapshot-first` 的盘后研究界面。
 
 ## 当前状态
 
-当前状态：仅记录需求和方案概述，未进入实现阶段。
+当前状态：已进入最小 experimental 实现阶段，但仍未达到正式商业实时层标准。
+
+当前仓库已落地的 v0.1 范围：
+
+1. `GET /api/v1/preview/watchlist`
+   返回手动监控池的盘中预览报价、买点/止盈/风控/止损触发状态，以及 preview source status。
+2. `POST /api/v1/preview/watchlist/run-check`
+   允许手动触发一次盘中检查，并在命中时写入 alerts。
+3. resident scheduler
+   常驻 loop 现在会顺带跑盘中监控 tick，把命中的实盘提醒写到本地 alerts JSONL。
+4. workbench
+   watchlist 区块会自动轮询盘中预览层，展示盘中价和当前信号阶段，并通过浏览器通知尝试提醒新的盘中告警。
+
+当前仍然明确保持的边界：
+
+1. 盘中预览仍然不写入 `READY snapshot`，也不参与回测。
+2. 当前只覆盖手动监控池，不覆盖全市场实时扫描。
+3. 当前默认 realtime provider 仍是 `experimental`，不应被误认为最终授权商业实时源。
