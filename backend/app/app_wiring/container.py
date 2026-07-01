@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from backend.app.app_wiring.settings import AppSettings, load_settings
-from backend.app.domains.analysis.service import build_market_overview
+from backend.app.domains.analysis.service import (
+    build_market_overview,
+    build_stock_price_volume_analysis,
+)
 from backend.app.domains.backtest.service import build_backtest_summary
 from backend.app.domains.intraday_monitor.service import (
     preview_strategy_watchlist,
@@ -217,6 +220,23 @@ class QuantAContainer:
         return {
             "api_contract_version": "0.1",
             **payload,
+        }
+
+    def stock_price_volume_analysis_payload(
+        self,
+        *,
+        symbol: str,
+        snapshot_id: str | None = None,
+        price_basis: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "api_contract_version": "0.1",
+            **build_stock_price_volume_analysis(
+                self.settings,
+                symbol=symbol,
+                snapshot_id=snapshot_id,
+                price_basis=price_basis,
+            ),
         }
 
     def screener_run_payload(

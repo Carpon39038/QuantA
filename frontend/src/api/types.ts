@@ -261,6 +261,69 @@ export interface DisclosureItem {
   detail_url: string | null;
 }
 
+export interface PriceVolumeAnalysisResponse {
+  api_contract_version: string;
+  symbol: string;
+  display_name: string;
+  as_of: PriceVolumeAsOf;
+  price_state: PriceVolumePriceState;
+  volume_state: PriceVolumeVolumeState;
+  signals: PriceVolumeSignal[];
+  decision: PriceVolumeDecision;
+  capital_confirmation: PriceVolumeCapitalConfirmation;
+}
+
+export interface PriceVolumeAsOf {
+  snapshot_id: string | null;
+  raw_snapshot_id: string | null;
+  trade_date: string | null;
+  price_basis: string | null;
+}
+
+export interface PriceVolumePriceState {
+  close: number | null;
+  change_pct: number | null;
+  ma5_gap_pct: number | null;
+  ma20_gap_pct: number | null;
+  return_5d_pct: number | null;
+  return_20d_pct: number | null;
+  ma_alignment: 'BULLISH' | 'BEARISH' | 'MIXED' | 'INSUFFICIENT';
+  trend_state: 'STRENGTHENING' | 'REPAIRING' | 'WEAKENING' | 'NEUTRAL' | 'UNKNOWN';
+  above_ma5: boolean;
+  above_ma20: boolean;
+}
+
+export interface PriceVolumeVolumeState {
+  volume: number | null;
+  amount: number | null;
+  volume_ratio: number | null;
+  state: 'EXPANDING' | 'OVER_EXPANDED' | 'CONTRACTING' | 'NORMAL' | 'UNKNOWN';
+  label: string;
+}
+
+export interface PriceVolumeSignal {
+  signal_code: string;
+  signal_type: string;
+  direction: string;
+  signal_score: number | null;
+}
+
+export interface PriceVolumeDecision {
+  action: 'BUY' | 'WATCH' | 'AVOID' | 'UNAVAILABLE';
+  title: string;
+  summary: string;
+  confidence_score: number;
+  next_trigger_price: number | null;
+  invalidation_price: number | null;
+  reasons: string[];
+  risks: string[];
+}
+
+export interface PriceVolumeCapitalConfirmation {
+  main_net_inflow_ratio: number | null;
+  northbound_net_inflow: number | null;
+}
+
 // --- Backtest detail ---
 export interface BacktestRunResponse {
   backtest_id: string;

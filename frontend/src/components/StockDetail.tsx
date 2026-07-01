@@ -3,7 +3,11 @@ import {
   CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts';
 import type { StockData } from '../hooks/useStock';
-import type { IntradayPreviewItem, StrategyWatchlistItem } from '../api/types';
+import type {
+  IntradayPreviewItem,
+  PriceVolumeAnalysisResponse,
+  StrategyWatchlistItem,
+} from '../api/types';
 import { cn } from '../lib/cn';
 import { QuoteItem } from './ui/QuoteItem';
 import { TechItem } from './ui/TechItem';
@@ -35,6 +39,28 @@ function fmtAmount(v: number | null | undefined): string {
   if (Math.abs(v) >= 1e8) return `${(v / 1e8).toFixed(2)}亿`;
   if (Math.abs(v) >= 1e4) return `${(v / 1e4).toFixed(2)}万`;
   return v.toFixed(2);
+}
+
+function decisionLabel(action: PriceVolumeAnalysisResponse['decision']['action']): string {
+  if (action === 'BUY') return '买点触发';
+  if (action === 'WATCH') return '等待确认';
+  if (action === 'AVOID') return '暂避';
+  return '数据不足';
+}
+
+function decisionTone(action: PriceVolumeAnalysisResponse['decision']['action']): string {
+  if (action === 'BUY') return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200';
+  if (action === 'AVOID') return 'border-rose-500/25 bg-rose-500/10 text-rose-200';
+  if (action === 'WATCH') return 'border-amber-500/25 bg-amber-500/10 text-amber-100';
+  return 'border-white/10 bg-white/[0.03] text-white/60';
+}
+
+function trendLabel(state: PriceVolumeAnalysisResponse['price_state']['trend_state']): string {
+  if (state === 'STRENGTHENING') return '转强';
+  if (state === 'REPAIRING') return '修复';
+  if (state === 'WEAKENING') return '转弱';
+  if (state === 'NEUTRAL') return '中性';
+  return '未知';
 }
 
 export function StockDetail({
@@ -72,7 +98,15 @@ export function StockDetail({
     );
   }
 
-  const { snapshot, kline, indicators, capitalFlow, fundamentals, disclosures } = stockData;
+  const {
+    snapshot,
+    kline,
+    indicators,
+    capitalFlow,
+    fundamentals,
+    disclosures,
+    priceVolumeAnalysis,
+  } = stockData;
 
   // Price & change
   const dailyBar = snapshot?.latest_daily_bar;
@@ -201,6 +235,61 @@ export function StockDetail({
           highlight="text-white/90"
         />
       </div>
+
+      {priceVolumeAnalysis && (
+        <div className={`rounded-xl border p-3 ${decisionTone(priceVolumeAnalysis.decision.action)}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-white/45">
+                量价诊断
+              </div>
+              <div className="mt-1 text-sm font-medium text-white/90">
+                {priceVolumeAnalysis.decision.title}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-semibold text-white/90">
+                {decisionLabel(priceVolumeAnalysis.decision.action)}
+              </div>
+              <div className="mt-0.5 text-[10px] text-white/45">
+                {priceVolumeAnalysis.as_of.trade_date ?? '--'}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] md:grid-cols-4">
+            <div>评分 {formatNum(priceVolumeAnalysis.decision.confidence_score)}</div>
+            <div>趋势 {trendLabel(priceVolumeAnalysis.price_state.trend_state)}</div>
+            <div>量能 {priceVolumeAnalysis.volume_state.label}</div>
+            <div>量比 {formatNum(priceVolumeAnalysis.volume_state.volume_ratio)}</div>
+            <div>MA5 {formatPct(priceVolumeAnalysis.price_state.ma5_gap_pct)}</div>
+            <div>MA20 {formatPct(priceVolumeAnalysis.price_state.ma20_gap_pct)}</div>
+            <div>触发价 {formatNum(priceVolumeAnalysis.decision.next_trigger_price)}</div>
+            <div>失效位 {formatNum(priceVolumeAnalysis.decision.invalidation_price)}</div>
+          </div>
+          <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] leading-relaxed text-white/75">
+            {priceVolumeAnalysis.decision.summary}
+          </div>
+          {priceVolumeAnalysis.decision.reasons.length > 0 && (
+            <div className="mt-2 space-y-1 text-[11px] leading-relaxed text-white/65">
+              {priceVolumeAnalysis.decision.reasons.slice(0, 4).map((reason) => (
+                <div key={reason}>{reason}</div>
+              ))}
+            </div>
+          )}
+          {priceVolumeAnalysis.decision.risks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {priceVolumeAnalysis.decision.risks.map((risk) => (
+                <span
+                  key={risk}
+                  className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] text-white/55"
+                >
+                  {risk}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Price Chart */}
       {chartData.length > 0 && (

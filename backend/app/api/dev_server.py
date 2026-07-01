@@ -134,6 +134,17 @@ def _make_handler() -> type[BaseHTTPRequestHandler]:
                             ),
                         )
                         return
+
+                    if path_parts[4] == "price-volume-analysis":
+                        self._send_json(
+                            200,
+                            container.stock_price_volume_analysis_payload(
+                                symbol=symbol,
+                                snapshot_id=_query_value(query, "snapshot_id"),
+                                price_basis=_query_value(query, "price_basis"),
+                            ),
+                        )
+                        return
                 except LookupError as exc:
                     self._send_json(
                         404,

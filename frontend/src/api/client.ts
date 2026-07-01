@@ -41,6 +41,7 @@ export const api = {
   stockCapitalFlow: (symbol: string) => fetchJson<import('./types').CapitalFlowResponse>(`/api/v1/stocks/${symbol}/capital-flow`),
   stockFundamentals: (symbol: string) => fetchJson<import('./types').FundamentalsResponse>(`/api/v1/stocks/${symbol}/fundamentals`),
   stockDisclosures: (symbol: string) => fetchJson<import('./types').DisclosuresResponse>(`/api/v1/stocks/${symbol}/disclosures`),
+  stockPriceVolumeAnalysis: (symbol: string) => fetchJson<import('./types').PriceVolumeAnalysisResponse>(`/api/v1/stocks/${symbol}/price-volume-analysis`),
   backtestLatest: () => fetchJson<import('./types').BacktestRunResponse>('/api/v1/backtests/runs/latest'),
   equityCurve: () => fetchJson<import('./types').EquityCurveResponse>('/api/v1/backtests/runs/latest/equity-curve'),
   trades: () => fetchJson<import('./types').TradesResponse>('/api/v1/backtests/runs/latest/trades'),
