@@ -2,7 +2,7 @@
 
 ## First Reliability Goals
 
-v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
+v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路，并让产出的监控计划在盘中持续可查、可触发、可告警。
 
 ## Reliability Invariants
 
@@ -12,6 +12,7 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路。
 4. 每次任务都要留下 run log 和失败原因。
 5. 回测必须绑定快照和策略版本，避免“结果漂移”。
 6. `daily_sync` 产生的 source-backed snapshot 在 `screener/backtest` 完成前必须保持 `BUILDING`，不能被查询侧当成最终发布结果。
+7. 盘中监控只能消费已发布计划和独立预览行情，不能反写或改写正式研究快照。
 
 ## Planned Operational Signals
 

@@ -2,7 +2,9 @@
 
 ## Goal
 
-QuantA 的首要目标不是一次性做成“大而全量化平台”，而是建立一套对智能体和人类都清晰的可演进结构，让我们先把 `日线数据 -> 盘后分析 -> 选股 -> 回测 -> 展示` 的闭环跑通。
+QuantA 的首要目标不是一次性做成“大而全量化平台”，而是建立一套对智能体和人类都清晰的可演进结构，让我们先把 `日线数据 -> 盘后分析 -> 选股 -> 回测 -> 监控计划 -> 盘中触发提醒` 的闭环跑通。
+
+当前产品定位：盘后研究不是最终交付物，而是盘中监控的准备层。盘后任务负责把数据、信号、买点、止盈、风控和止损线固化成可复现计划；盘中监控只消费这些计划和独立预览行情，判断是否触发。
 
 ## Architecture Shape
 
@@ -75,7 +77,7 @@ Types -> Config -> Repo -> Service -> Runtime/API
 
 ## Formal Source Strategy
 
-为了把 QuantA 的 v1.0 做成“可交付、可复现、可运维”的盘后研究系统，正式数据源按 `canonical -> official disclosure -> supplementary -> future licensed realtime` 四层管理：
+为了把 QuantA 的 v1.0 做成“可交付、可复现、可运维”的盘后研究驱动盘中监控系统，正式数据源按 `canonical -> official disclosure -> supplementary -> future licensed realtime` 四层管理：
 
 1. `Canonical structured source`
    盘后结构化主数据、交易日历、日线、复权因子、每日指标、涨跌停价、停复牌、龙虎榜、资金流，以及全市场季度财务过滤所需结构化表，优先使用有明确账号体系、文档和调用门槛的结构化服务，当前默认收敛到 `Tushare Pro 5000积分档`。
@@ -116,7 +118,9 @@ flowchart LR
     E --> H["snapshot_id 发布"]
     F --> H
     G --> H
-    H --> I["FastAPI / Web / 报告"]
+    H --> I["策略监控计划"]
+    L["盘中预览行情"] --> K["触发提醒 / Web 盯盘"]
+    I --> K
 ```
 
 ## Non-Negotiable Invariants
@@ -129,6 +133,8 @@ flowchart LR
 6. 能写成规则的约束，尽量不要只写成口头偏好。
 7. 每类核心数据集必须有单一 `canonical source`，允许补充源，但不能在发布时混淆主责来源。
 8. v1.0 默认实现必须以 `Tushare Pro 5000积分档可达能力` 为基线，允许直接把全市场季度财务过滤纳入正式主链。
+9. 盘后研究产物必须能产出盘中监控可消费的计划：观察名单、策略名、买点、止盈、风控、止损和解释。
+10. 盘中预览行情只能用于触发监控计划，不得反向污染 `READY snapshot`、回测或盘后研究结论。
 
 ## Source Documents
 
