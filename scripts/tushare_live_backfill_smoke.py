@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 import duckdb
 
@@ -22,6 +23,10 @@ from backend.app.domains.market_data.sync import (
     resolve_source_backfill_window,
     resolve_source_backfill_window_to_start_date,
 )
+
+
+def _log(message: str) -> None:
+    print(f"[tushare_live_backfill_smoke] {message}", file=sys.stderr, flush=True)
 
 
 def main() -> int:
@@ -39,19 +44,42 @@ def main() -> int:
     settings = load_settings()
     lookback_open_days = int(os.environ.get("QUANTA_LIVE_BACKFILL_OPEN_DAYS", "20"))
     target_start_biz_date = os.environ.get("QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE")
+    target_end_biz_date = os.environ.get("QUANTA_LIVE_BACKFILL_END_BIZ_DATE")
     skip_rerun = os.environ.get("QUANTA_LIVE_BACKFILL_SKIP_RERUN", "0") == "1"
+    _log(
+        "resolving window "
+        f"target_start={target_start_biz_date or 'auto-lookback'} "
+        f"target_end={target_end_biz_date or 'latest-source'}"
+    )
+    window_started_at = time.perf_counter()
     if target_start_biz_date:
         target_window = resolve_source_backfill_window_to_start_date(
             settings,
             target_start_biz_date=target_start_biz_date,
+            end_biz_date=target_end_biz_date,
         )
     else:
         target_window = resolve_source_backfill_window(
             settings,
             lookback_open_days=lookback_open_days,
+            end_biz_date=target_end_biz_date,
         )
+    window_resolution_elapsed_seconds = time.perf_counter() - window_started_at
     target_biz_dates = list(target_window["target_open_biz_dates"])
     latest_biz_date = str(target_window["end_biz_date"])
+    sync_window_args = [
+        "--start-biz-date",
+        str(target_window["start_biz_date"]),
+        "--end-biz-date",
+        str(target_window["end_biz_date"]),
+    ]
+    _log(
+        "resolved window "
+        f"start={target_window['start_biz_date']} "
+        f"end={target_window['end_biz_date']} "
+        f"open_days={len(target_biz_dates)} "
+        f"elapsed={window_resolution_elapsed_seconds:.3f}s"
+    )
 
     with tempfile.TemporaryDirectory(prefix="quanta-live-backfill-") as temp_dir:
         runtime_dir = Path(temp_dir)
@@ -65,16 +93,15 @@ def main() -> int:
             }
         )
 
+        total_started_at = time.perf_counter()
+        first_run_started_at = time.perf_counter()
+        _log("starting first latest-artifact backfill run")
         first_run = subprocess.run(
             [
                 "python3",
                 "-m",
                 "backend.app.domains.market_data.sync",
-                *(
-                    ["--target-start-biz-date", str(target_start_biz_date)]
-                    if target_start_biz_date
-                    else ["--lookback-open-days", str(lookback_open_days)]
-                ),
+                *sync_window_args,
                 "--artifact-mode",
                 "latest",
                 "--print-summary",
@@ -85,18 +112,19 @@ def main() -> int:
             capture_output=True,
             text=True,
         )
+        first_run_elapsed_seconds = time.perf_counter() - first_run_started_at
+        _log(f"first run finished elapsed={first_run_elapsed_seconds:.3f}s")
         second_run = None
+        second_run_elapsed_seconds = None
         if not skip_rerun:
+            second_run_started_at = time.perf_counter()
+            _log("starting second latest-artifact no-op rerun")
             second_run = subprocess.run(
                 [
                     "python3",
                     "-m",
                     "backend.app.domains.market_data.sync",
-                    *(
-                        ["--target-start-biz-date", str(target_start_biz_date)]
-                        if target_start_biz_date
-                        else ["--lookback-open-days", str(lookback_open_days)]
-                    ),
+                    *sync_window_args,
                     "--artifact-mode",
                     "latest",
                     "--print-summary",
@@ -107,7 +135,11 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
+            second_run_elapsed_seconds = time.perf_counter() - second_run_started_at
+            _log(f"second run finished elapsed={second_run_elapsed_seconds:.3f}s")
+        total_elapsed_seconds = time.perf_counter() - total_started_at
 
+        _log("reading isolated DuckDB summary")
         connection = duckdb.connect(str(runtime_dir / "duckdb" / "quanta.duckdb"), read_only=True)
         try:
             raw_snapshot_count = int(
@@ -179,8 +211,21 @@ def main() -> int:
             "latest_biz_date": latest_biz_date,
             "lookback_open_days": lookback_open_days,
             "target_start_biz_date": target_start_biz_date,
+            "target_end_biz_date": target_end_biz_date,
             "skip_rerun": skip_rerun,
+            "target_open_biz_date_count": len(target_biz_dates),
             "target_biz_dates": target_biz_dates,
+            "window_resolution_elapsed_seconds": round(
+                window_resolution_elapsed_seconds,
+                3,
+            ),
+            "first_run_elapsed_seconds": round(first_run_elapsed_seconds, 3),
+            "second_run_elapsed_seconds": (
+                round(second_run_elapsed_seconds, 3)
+                if second_run_elapsed_seconds is not None
+                else None
+            ),
+            "total_elapsed_seconds": round(total_elapsed_seconds, 3),
             "first_run_stdout": first_run.stdout.strip().splitlines(),
             "second_run_stdout": (
                 second_run.stdout.strip().splitlines() if second_run is not None else []

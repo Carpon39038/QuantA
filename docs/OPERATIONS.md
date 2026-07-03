@@ -212,18 +212,38 @@ bash scripts/ops_entrypoint.sh doctor
 QUANTA_SOURCE_PROVIDER=tushare \
 QUANTA_TUSHARE_TOKEN='***' \
 QUANTA_LIVE_BACKFILL_TARGET_START_BIZ_DATE=2025-12-15 \
+QUANTA_LIVE_BACKFILL_END_BIZ_DATE=2026-07-03 \
 QUANTA_LIVE_BACKFILL_SKIP_RERUN=1 \
 python3 scripts/tushare_live_backfill_smoke.py
 ```
+
+`QUANTA_LIVE_BACKFILL_END_BIZ_DATE` 可选；固定后会让 smoke 使用可复现窗口，避免每次运行都重新探测 latest source date。输出重点看：
+
+1. `target_open_biz_date_count`
+2. `first_run_elapsed_seconds`
+3. `second_run_elapsed_seconds`
+4. `first_run_stdout` 里的 `source_only_raw_snapshot_count` 与 `artifact_snapshot_count`
+5. `second_run_stdout` 里的 `synced_biz_date_count=0`
+6. `history_coverage`
+7. `corporate_action_check`
 
 正式 runtime 追深用 daemon，不建议直接在生产库上反复跑隔离 smoke。
 
 长窗口回补的默认运维口径：
 
 1. queue / worker 的 `history_backfill` 使用 latest artifact 模式。
-2. 中间历史日只写 raw facts。
+2. 中间历史日只写 raw facts，并保留 `adj_factor_overrides` 到 raw snapshot watermark，供终点 price series rebuild 使用。
 3. 窗口终点会重建一次完整 artifact。
 4. 如果终点 artifact 的 price history 已覆盖目标起点，rerun 应保持 no-op。
+5. `target_start_biz_date=auto` 依赖 `history_coverage.recommended_target_start_biz_date`；当本地 `trade_calendar` 不足以找到 anchor 前一个开市日时，系统会用 anchor 前 10 个自然日做保守兜底，再交给 source provider 解析真实开市窗口。
+
+2026-07-03 的 deepening 结果：
+
+1. 隔离 smoke：`core_operating_40`、`2025-11-17 -> 2026-07-03`、`152` 个 open days；首轮 `190.174s`，rerun `0.712s`。
+2. 隔离 smoke 首轮：`source_only_raw_snapshot_count=149`，`artifact_snapshot_count=1`；rerun：`synced_biz_date_count=0`，`artifact_snapshot_count=0`。
+3. 隔离 smoke reconciliation：`checked=40/aligned=40/boundary_gap=0`，coverage 为 `2025-11-17 -> 2026-07-03`，最近未覆盖事件前移到 `2025-11-12`。
+4. 正式 live daemon 重启后自动处理 `target_start_biz_date=2025-11-08` 及后续多段；截至 16:04，HTTP health 可见正式 READY coverage 至少推进到 `2025-08-26 -> 2026-07-03`，最近未覆盖事件前移到 `2025-08-20`，runtime resolved auto target 为 `2025-08-11`。
+5. 正式 live reconciliation 仍有 `unchanged_adj_factor=9` warning；这是历史旧 raw snapshots 没有 `adj_factor_overrides` watermark 的遗留，不是 error。若要清理，应补可审计 raw refresh / reingest 流程。
 
 ## Failure Handling
 

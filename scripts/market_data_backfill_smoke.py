@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 
 from backend.app.app_wiring.settings import load_settings
+from backend.app.domains.market_data.repo import _previous_open_trade_date
 from backend.app.domains.market_data.sync import (
     backfill_market_data,
     resolve_source_backfill_window,
@@ -442,6 +443,27 @@ def main() -> int:
     previous_env = {key: os.environ.get(key) for key in _env_keys()}
     previous_module = sys.modules.get("tushare")
     try:
+        connection = duckdb.connect(":memory:")
+        try:
+            connection.execute(
+                """
+                CREATE TABLE trade_calendar (
+                  trade_date DATE,
+                  is_open BOOLEAN
+                )
+                """
+            )
+            assert _previous_open_trade_date(connection, "2025-11-18") == "2025-11-08"
+            connection.execute(
+                """
+                INSERT INTO trade_calendar (trade_date, is_open)
+                VALUES (CAST('2025-11-17' AS DATE), TRUE)
+                """
+            )
+            assert _previous_open_trade_date(connection, "2025-11-18") == "2025-11-17"
+        finally:
+            connection.close()
+
         with tempfile.TemporaryDirectory(prefix="quanta-backfill-smoke-") as temp_dir:
             os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir
             os.environ["QUANTA_DUCKDB_PATH"] = str(Path(temp_dir) / "duckdb" / "quanta.duckdb")
@@ -622,6 +644,17 @@ def main() -> int:
                     LIMIT 1
                     """
                 ).fetchone()[0]
+                source_only_adj_factor = connection.execute(
+                    """
+                    SELECT adj_factor
+                    FROM price_series_daily
+                    WHERE snapshot_id = ?
+                      AND symbol = '300750.SZ'
+                      AND trade_date = CAST('2026-03-31' AS DATE)
+                    LIMIT 1
+                    """,
+                    [latest_snapshot_id],
+                ).fetchone()[0]
             finally:
                 connection.close()
 
@@ -629,10 +662,13 @@ def main() -> int:
             assert raw_snapshot_count == 5
             assert artifact_publish_count == 3
             assert source_only_watermark["artifact_mode"] == "source_only"
+            assert source_only_watermark["include_artifact_inputs"] is False
+            assert len(source_only_watermark["adj_factor_overrides"]) == 2
             assert source_only_watermark["shadow_validation"]["status"] == "SKIPPED"
             assert str(price_history_coverage[0]) <= "2026-03-31"
             assert str(price_history_coverage[1]) == "2026-04-02"
             assert int(price_history_coverage[2]) >= 3
+            assert float(source_only_adj_factor) == 0.95
 
         with tempfile.TemporaryDirectory(prefix="quanta-backfill-auto-smoke-") as temp_dir:
             os.environ["QUANTA_RUNTIME_DATA_DIR"] = temp_dir

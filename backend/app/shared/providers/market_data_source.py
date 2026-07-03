@@ -78,7 +78,12 @@ class MarketDataProvider(Protocol):
     ) -> list[str]:
         ...
 
-    def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
+    def fetch_daily_snapshot(
+        self,
+        biz_date: str | None = None,
+        *,
+        include_artifact_inputs: bool = True,
+    ) -> MarketDataSnapshot:
         ...
 
 
@@ -106,7 +111,12 @@ class FixtureJsonMarketDataProvider:
             if start_biz_date <= path.stem <= end_biz_date
         ]
 
-    def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
+    def fetch_daily_snapshot(
+        self,
+        biz_date: str | None = None,
+        *,
+        include_artifact_inputs: bool = True,
+    ) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
         snapshot_path = self._settings.source_fixture_dir / f"{target_biz_date}.json"
         if not snapshot_path.exists():
@@ -194,7 +204,12 @@ class AkshareMarketDataProvider:
             }
         )
 
-    def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
+    def fetch_daily_snapshot(
+        self,
+        biz_date: str | None = None,
+        *,
+        include_artifact_inputs: bool = True,
+    ) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
         symbols = self._settings.source_symbols
 
@@ -290,6 +305,7 @@ class TushareMarketDataProvider:
         self._settings = settings
         self._ts = importlib.import_module("tushare")
         self._pro = self._ts.pro_api(settings.tushare_token)
+        self._stock_basic_records_cache: list[dict[str, object]] | None = None
 
     def latest_available_biz_date(self) -> str:
         end_date = datetime.now(CN_TZ).date()
@@ -355,7 +371,12 @@ class TushareMarketDataProvider:
             if _is_tushare_trade_open(item.get("is_open"))
         )
 
-    def fetch_daily_snapshot(self, biz_date: str | None = None) -> MarketDataSnapshot:
+    def fetch_daily_snapshot(
+        self,
+        biz_date: str | None = None,
+        *,
+        include_artifact_inputs: bool = True,
+    ) -> MarketDataSnapshot:
         target_biz_date = biz_date or self.latest_available_biz_date()
         trade_date = target_biz_date.replace("-", "")
         fetched_at = datetime.now(CN_TZ).isoformat(timespec="seconds")
@@ -403,35 +424,47 @@ class TushareMarketDataProvider:
             ),
             key="ts_code",
         )
-        moneyflow_rows, moneyflow_warning = _load_tushare_optional_records(
-            self._pro,
-            dataset_name="moneyflow",
-            trade_date=trade_date,
-        )
         adj_factor_rows, adj_factor_warning = _load_tushare_optional_records(
             self._pro,
             dataset_name="adj_factor",
             trade_date=trade_date,
         )
-        top_list_rows, top_list_warning = _load_tushare_optional_records(
-            self._pro,
-            dataset_name="top_list",
-            trade_date=trade_date,
-        )
-        suspend_rows, suspend_warning = _load_tushare_optional_records(
-            self._pro,
-            dataset_name="suspend_d",
-            trade_date=trade_date,
-        )
-        moneyflow_hsgt_rows, moneyflow_hsgt_warning = _load_tushare_optional_records(
-            self._pro,
-            dataset_name="moneyflow_hsgt",
-            trade_date=trade_date,
-        )
-        index_daily_rows, index_daily_warning = _load_tushare_index_daily_rows(
-            self._pro,
-            trade_date=trade_date,
-        )
+        if include_artifact_inputs:
+            moneyflow_rows, moneyflow_warning = _load_tushare_optional_records(
+                self._pro,
+                dataset_name="moneyflow",
+                trade_date=trade_date,
+            )
+            top_list_rows, top_list_warning = _load_tushare_optional_records(
+                self._pro,
+                dataset_name="top_list",
+                trade_date=trade_date,
+            )
+            suspend_rows, suspend_warning = _load_tushare_optional_records(
+                self._pro,
+                dataset_name="suspend_d",
+                trade_date=trade_date,
+            )
+            moneyflow_hsgt_rows, moneyflow_hsgt_warning = _load_tushare_optional_records(
+                self._pro,
+                dataset_name="moneyflow_hsgt",
+                trade_date=trade_date,
+            )
+            index_daily_rows, index_daily_warning = _load_tushare_index_daily_rows(
+                self._pro,
+                trade_date=trade_date,
+            )
+        else:
+            moneyflow_rows = []
+            moneyflow_warning = None
+            top_list_rows = []
+            top_list_warning = None
+            suspend_rows = []
+            suspend_warning = None
+            moneyflow_hsgt_rows = []
+            moneyflow_hsgt_warning = None
+            index_daily_rows = []
+            index_daily_warning = None
         adj_factor_by_symbol = {
             _normalize_tushare_symbol(str(row["ts_code"])): _float_or_none(
                 row.get("adj_factor")
@@ -447,12 +480,22 @@ class TushareMarketDataProvider:
             and str(row.get("suspend_type") or "").upper() == "S"
             and _normalize_tushare_symbol(str(row["ts_code"])) in tracked_symbols
         }
-        financial_period_candidates = _candidate_tushare_financial_periods(target_biz_date)
-        financial_bundle = _resolve_tushare_financial_bundle(
-            self._pro,
-            candidate_periods=financial_period_candidates,
-            tracked_symbols=tracked_tushare_codes,
-        )
+        if include_artifact_inputs:
+            financial_period_candidates = _candidate_tushare_financial_periods(target_biz_date)
+            financial_bundle = _resolve_tushare_financial_bundle(
+                self._pro,
+                candidate_periods=financial_period_candidates,
+                tracked_symbols=tracked_tushare_codes,
+            )
+        else:
+            financial_bundle = TushareFinancialBundle(
+                report_period_by_symbol={},
+                fina_indicator_rows=(),
+                income_rows=(),
+                balancesheet_rows=(),
+                cashflow_rows=(),
+                warnings=(),
+            )
         financial_period_by_symbol = {
             symbol: _normalize_tushare_trade_date(period)
             for symbol, period in sorted(financial_bundle.report_period_by_symbol.items())
@@ -461,8 +504,10 @@ class TushareMarketDataProvider:
             set(financial_period_by_symbol.values()),
             reverse=True,
         )
-        missing_financial_symbols = sorted(
-            tracked_symbols.difference(set(financial_period_by_symbol))
+        missing_financial_symbols = (
+            sorted(tracked_symbols.difference(set(financial_period_by_symbol)))
+            if include_artifact_inputs
+            else []
         )
 
         daily_bars: list[dict[str, object]] = []
@@ -533,13 +578,16 @@ class TushareMarketDataProvider:
         ]
         if north_money_million is not None:
             highlights.append(f"north_money_million: {north_money_million:.2f}")
-        highlights.append(
-            f"market_index_coverage: {len(market_indices)}/{len(TUSHARE_MARKET_INDEXES)}"
-        )
-        highlights.append(
-            f"adj_factor_coverage: {len(adj_factor_by_symbol)}/{len(stock_basic_records)}"
-        )
-        highlights.append(f"suspended_symbol_count: {len(suspended_symbols)}")
+        if include_artifact_inputs:
+            highlights.append(
+                f"market_index_coverage: {len(market_indices)}/{len(TUSHARE_MARKET_INDEXES)}"
+            )
+            highlights.append(
+                f"adj_factor_coverage: {len(adj_factor_by_symbol)}/{len(stock_basic_records)}"
+            )
+            highlights.append(f"suspended_symbol_count: {len(suspended_symbols)}")
+        else:
+            highlights.append("source_only_minimal_artifact_inputs")
         if financial_periods:
             if len(financial_periods) == 1:
                 highlights.append(f"financial_report_period: {financial_periods[0]}")
@@ -604,6 +652,7 @@ class TushareMarketDataProvider:
                 "symbol_count": len(stock_basic_records),
                 "daily_bar_count": len(daily_bars),
                 "exchange": self._settings.tushare_exchange,
+                "include_artifact_inputs": include_artifact_inputs,
                 "moneyflow_count": len(moneyflow_rows),
                 "market_index_count": len(market_indices),
                 "market_index_symbols": [
@@ -636,6 +685,9 @@ class TushareMarketDataProvider:
         )
 
     def _load_stock_basic_records(self) -> list[dict[str, object]]:
+        if self._stock_basic_records_cache is not None:
+            return [dict(item) for item in self._stock_basic_records_cache]
+
         records = _frame_records(
             _call_tushare_dataset(
                 self._pro,
@@ -666,6 +718,7 @@ class TushareMarketDataProvider:
                     ),
                 }
             )
+        self._stock_basic_records_cache = [dict(item) for item in filtered_records]
         return filtered_records
 
     def _load_trade_calendar_row(

@@ -201,7 +201,10 @@ def _sync_market_data_with_provider(
     build_artifacts = artifact_mode == "full"
 
     _consume_simulated_source_failure(settings, biz_date=biz_date)
-    source_snapshot = provider.fetch_daily_snapshot(biz_date=biz_date)
+    source_snapshot = provider.fetch_daily_snapshot(
+        biz_date=biz_date,
+        include_artifact_inputs=build_artifacts,
+    )
     if not source_snapshot.daily_bars:
         raise RuntimeError(
             f"Source provider {source_snapshot.provider} returned an empty daily snapshot "
@@ -220,6 +223,10 @@ def _sync_market_data_with_provider(
         "artifact_mode": artifact_mode,
         "shadow_validation": shadow_validation,
     }
+    if source_snapshot.adj_factor_overrides:
+        source_watermark["adj_factor_overrides"] = [
+            dict(item) for item in source_snapshot.adj_factor_overrides
+        ]
 
     if build_artifacts:
         market_overview = dict(source_snapshot.market_overview)
@@ -1017,6 +1024,10 @@ def _materialize_price_series_snapshot(
     ).fetchall()
 
     connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
+    raw_snapshot_adj_factors = _load_raw_snapshot_adj_factor_map(
+        connection,
+        raw_snapshot_id=raw_snapshot_id,
+    )
     previous_adj_factors = _load_previous_adj_factor_map(
         connection,
         price_basis=price_basis,
@@ -1030,7 +1041,10 @@ def _materialize_price_series_snapshot(
     for symbol, trade_date, open_raw, high_raw, low_raw, close_raw, pre_close_raw, volume, amount in rows:
         resolved_adj_factor = current_adj_factors.get(
             (str(symbol), str(trade_date)),
-            previous_adj_factors.get((str(symbol), str(trade_date)), 1.0),
+            raw_snapshot_adj_factors.get(
+                (str(symbol), str(trade_date)),
+                previous_adj_factors.get((str(symbol), str(trade_date)), 1.0),
+            ),
         )
         connection.execute(
             """
@@ -1068,6 +1082,41 @@ def _materialize_price_series_snapshot(
         )
         inserted += 1
     return inserted
+
+
+def _load_raw_snapshot_adj_factor_map(
+    connection,
+    *,
+    raw_snapshot_id: str,
+) -> dict[tuple[str, str], float]:
+    rows = connection.execute(
+        """
+        WITH target AS (
+          SELECT snapshot_seq
+          FROM raw_snapshot
+          WHERE raw_snapshot_id = ?
+        )
+        SELECT rs.source_watermark_json
+        FROM raw_snapshot rs
+        JOIN target
+          ON rs.snapshot_seq <= target.snapshot_seq
+        ORDER BY rs.snapshot_seq ASC
+        """,
+        [raw_snapshot_id],
+    ).fetchall()
+    adj_factors: dict[tuple[str, str], float] = {}
+    for (source_watermark_json,) in rows:
+        source_watermark = json.loads(str(source_watermark_json))
+        for item in source_watermark.get("adj_factor_overrides", []):
+            if not isinstance(item, dict):
+                continue
+            symbol = item.get("symbol")
+            trade_date = item.get("trade_date")
+            adj_factor = item.get("adj_factor")
+            if symbol in (None, "") or trade_date in (None, "") or adj_factor is None:
+                continue
+            adj_factors[(str(symbol), str(trade_date))] = float(adj_factor)
+    return adj_factors
 
 
 def _emit_shadow_validation_alerts(

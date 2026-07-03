@@ -47,7 +47,10 @@ def _previous_open_trade_date(
         [reference_date],
     ).fetchone()
     previous_trade_date = row[0] if row is not None else None
-    return _isoformat(previous_trade_date) if previous_trade_date is not None else None
+    if previous_trade_date is not None:
+        return _isoformat(previous_trade_date)
+
+    return (datetime.fromisoformat(reference_date).date() - timedelta(days=10)).isoformat()
 
 
 def _build_history_coverage_recommendation(
