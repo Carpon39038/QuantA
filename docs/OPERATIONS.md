@@ -180,6 +180,89 @@ python3 scripts/after_close_check.py \
   --fail-on-alert
 ```
 
+### Active Alert Notifications
+
+runtime alerts 默认只写入 `logs/alerts.jsonl` 并由 HTTP / workbench 读取。需要主动触达时，可以启用第一版 webhook 桥接；飞书、企业微信、Slack 或自建告警入口只要提供 incoming webhook，都可以先走这条通道。
+
+启用方式：
+
+```bash
+QUANTA_ALERT_NOTIFICATION_CHANNEL=webhook
+QUANTA_ALERT_WEBHOOK_URL='https://example.invalid/quanta-alert-webhook'
+QUANTA_ALERT_NOTIFICATION_MIN_SEVERITY=ERROR
+QUANTA_ALERT_NOTIFICATION_THROTTLE_SECONDS=900
+QUANTA_ALERT_NOTIFICATION_TIMEOUT_SECONDS=5
+QUANTA_ALERT_NOTIFICATION_MUTED=0
+```
+
+安全口径：
+
+1. `QUANTA_ALERT_WEBHOOK_URL` 是 secret，只写入本机 `data/env/live.env`，不要提交。
+2. API payload、通知失败日志和示例 env 都不会暴露真实 webhook URL。
+3. 通知失败不会阻断原始 alert 写入；失败会落到 `logs/alert-notification-failures.jsonl`。
+
+触达范围：
+
+1. `ERROR` 及以上 runtime alert 默认会发送，例如 `scheduler_loop_failure`、`service_queue_failure`、`backtest_queue_failure`。
+2. provider degradation 即使是 `WARNING` 也会发送，包括 `shadow_validation_provider_degraded` 和 `intraday_preview_provider_degraded`。
+3. `after_close_check.py` 在整体 `status=fail` 时会额外写入 `after_close_hard_gate_failure`，并走同一通知桥接。
+4. 同一 fingerprint 在 `QUANTA_ALERT_NOTIFICATION_THROTTLE_SECONDS` 窗口内只通知一次，重复触发会更新 `logs/alert-notification-state.json` 里的 suppressed count。
+
+本地验证可以用临时 webhook server：
+
+```bash
+python3 - <<'PY'
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        print(json.dumps(json.loads(body), ensure_ascii=False, indent=2))
+        self.send_response(204)
+        self.end_headers()
+
+server = HTTPServer(("127.0.0.1", 19081), Handler)
+print("listening on http://127.0.0.1:19081/hook")
+server.serve_forever()
+PY
+```
+
+另一个终端触发一次测试 alert：
+
+```bash
+QUANTA_RUNTIME_DATA_DIR="$(mktemp -d)" \
+QUANTA_ALERT_NOTIFICATION_CHANNEL=webhook \
+QUANTA_ALERT_WEBHOOK_URL=http://127.0.0.1:19081/hook \
+python3 - <<'PY'
+from backend.app.app_wiring.settings import load_settings
+from backend.app.shared.telemetry.alerts import emit_alert
+
+settings = load_settings()
+emit_alert(
+    settings,
+    alert_type="service_queue_failure",
+    severity="error",
+    message="notification smoke",
+    detail={"task_id": "smoke", "task_name": "daily_sync"},
+)
+print(settings.alerts_path)
+print(settings.alert_notification_state_path)
+PY
+```
+
+需要静音时：
+
+```bash
+QUANTA_ALERT_NOTIFICATION_MUTED=1
+```
+
+如果 webhook 通道不可达，检查：
+
+```bash
+tail -n 20 data/live/logs/alert-notification-failures.jsonl
+```
+
 ## 2026-07-03 Local Launchd Verification
 
 本机已安装并运行三个 launchd label：

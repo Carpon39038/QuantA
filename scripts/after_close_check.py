@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 
 from backend.app.app_wiring.settings import load_settings
+from backend.app.shared.telemetry.alerts import emit_alert
 from scripts.ops_doctor import build_summary
 
 
@@ -121,6 +122,7 @@ def main() -> int:
         "doctor": doctor_summary,
         "after_close_findings": after_close_findings,
     }
+    _emit_after_close_failure_alert(settings, summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 1 if status == "fail" else 0
 
@@ -204,6 +206,61 @@ def _fetch_json(url: str, *, timeout_seconds: int) -> dict[str, object]:
 
 def _event_name(event: dict[str, object] | None) -> str | None:
     return str(event.get("event")) if isinstance(event, dict) else None
+
+
+def _emit_after_close_failure_alert(
+    settings,
+    summary: dict[str, object],
+) -> bool:
+    if summary.get("status") != "fail":
+        return False
+    emit_alert(
+        settings,
+        alert_type="after_close_hard_gate_failure",
+        severity="error",
+        message="After-close operations hard gate failed",
+        detail=_after_close_failure_alert_detail(summary),
+    )
+    return True
+
+
+def _after_close_failure_alert_detail(summary: dict[str, object]) -> dict[str, object]:
+    doctor = summary.get("doctor")
+    doctor_payload = doctor if isinstance(doctor, dict) else {}
+    after_close_findings = summary.get("after_close_findings")
+    failed_findings = _failed_finding_samples(
+        list(doctor_payload.get("findings", []))
+        if isinstance(doctor_payload.get("findings"), list)
+        else []
+    )
+    if isinstance(after_close_findings, list):
+        failed_findings.extend(_failed_finding_samples(after_close_findings))
+    return {
+        "status": summary.get("status"),
+        "doctor_status": doctor_payload.get("status"),
+        "snapshot_id": doctor_payload.get("snapshot_id"),
+        "snapshot_biz_date": doctor_payload.get("snapshot_biz_date"),
+        "source_provider": doctor_payload.get("source_provider"),
+        "source_universe": doctor_payload.get("source_universe"),
+        "failed_findings": failed_findings[:8],
+    }
+
+
+def _failed_finding_samples(findings: list[object]) -> list[dict[str, object]]:
+    samples = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        if finding.get("severity") != "fail":
+            continue
+        samples.append(
+            {
+                "name": finding.get("name"),
+                "severity": finding.get("severity"),
+                "message": finding.get("message"),
+            }
+        )
+    return samples
 
 
 def _overall_status(statuses: list[str]) -> str:

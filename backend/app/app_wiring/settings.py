@@ -30,6 +30,18 @@ def _parse_optional_str(name: str) -> str | None:
     return normalized or None
 
 
+def _parse_bool(name: str, default: bool) -> bool:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean, got {raw_value!r}")
+
+
 def _parse_csv(raw_value: str | None) -> tuple[str, ...]:
     if raw_value is None:
         return ()
@@ -63,6 +75,14 @@ class AppSettings:
     logs_dir: Path
     queue_dir: Path
     alerts_path: Path
+    alert_notification_channel: str
+    alert_notification_webhook_url: str | None
+    alert_notification_min_severity: str
+    alert_notification_throttle_seconds: int
+    alert_notification_timeout_seconds: int
+    alert_notification_muted: bool
+    alert_notification_state_path: Path
+    alert_notification_failures_path: Path
     intraday_preview_state_path: Path
     intraday_preview_fixture_path: Path
     fixture_path: Path
@@ -132,6 +152,41 @@ def load_settings() -> AppSettings:
         alerts_path=_resolve_data_path(
             data_dir,
             os.environ.get("QUANTA_ALERTS_PATH", "logs/alerts.jsonl"),
+        ),
+        alert_notification_channel=os.environ.get(
+            "QUANTA_ALERT_NOTIFICATION_CHANNEL",
+            "none",
+        ).strip().lower(),
+        alert_notification_webhook_url=_parse_optional_str("QUANTA_ALERT_WEBHOOK_URL"),
+        alert_notification_min_severity=os.environ.get(
+            "QUANTA_ALERT_NOTIFICATION_MIN_SEVERITY",
+            "ERROR",
+        ).strip().upper(),
+        alert_notification_throttle_seconds=_parse_int(
+            "QUANTA_ALERT_NOTIFICATION_THROTTLE_SECONDS",
+            900,
+        ),
+        alert_notification_timeout_seconds=_parse_int(
+            "QUANTA_ALERT_NOTIFICATION_TIMEOUT_SECONDS",
+            5,
+        ),
+        alert_notification_muted=_parse_bool(
+            "QUANTA_ALERT_NOTIFICATION_MUTED",
+            False,
+        ),
+        alert_notification_state_path=_resolve_data_path(
+            data_dir,
+            os.environ.get(
+                "QUANTA_ALERT_NOTIFICATION_STATE_PATH",
+                "logs/alert-notification-state.json",
+            ),
+        ),
+        alert_notification_failures_path=_resolve_data_path(
+            data_dir,
+            os.environ.get(
+                "QUANTA_ALERT_NOTIFICATION_FAILURES_PATH",
+                "logs/alert-notification-failures.jsonl",
+            ),
         ),
         intraday_preview_state_path=_resolve_data_path(
             data_dir,

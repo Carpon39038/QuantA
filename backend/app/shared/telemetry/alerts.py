@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from backend.app.app_wiring.settings import AppSettings
+from backend.app.shared.telemetry.notifications import notify_alert
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -28,6 +29,10 @@ def emit_alert(
     settings.alerts_path.parent.mkdir(parents=True, exist_ok=True)
     with settings.alerts_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    try:
+        notify_alert(settings, record)
+    except Exception:
+        return
 
 
 def load_recent_alerts(
