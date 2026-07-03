@@ -211,7 +211,7 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 
 ### `official_disclosure_item`
 
-官方披露元数据 sidecar，供个股页和公告读口读取。
+官方披露事件 sidecar，供个股页和公告读口读取正文摘要、分类解释与问询状态。
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -219,12 +219,19 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `trade_date` | `DATE` | 公告日期; required |
 | `snapshot_id` | `VARCHAR` | 发布快照标识; required |
 | `announcement_id` | `VARCHAR` | 公告标识; required |
+| `disclosure_event_id` | `VARCHAR` | 去重后的披露事件标识; required |
+| `disclosure_event_type` | `VARCHAR` | 披露事件类型; required |
 | `org_id` | `VARCHAR` | 巨潮机构标识; required |
 | `title` | `VARCHAR` | 公告标题; required |
 | `short_title` | `VARCHAR` | 公告简称; nullable |
 | `announcement_time` | `TIMESTAMP` | 公告时间; nullable |
 | `announcement_type` | `VARCHAR` | 公告类型编码; nullable |
 | `announcement_type_name` | `VARCHAR` | 公告类型名称; nullable |
+| `classification_explanation` | `VARCHAR` | 公告分类解释; nullable |
+| `body_summary` | `VARCHAR` | 公告正文摘要; nullable |
+| `inquiry_status` | `VARCHAR` | 问询函状态; nullable |
+| `reply_status` | `VARCHAR` | 回复函状态; nullable |
+| `related_announcement_id` | `VARCHAR` | 关联公告标识; nullable |
 | `page_column` | `VARCHAR` | 页面栏目编码; nullable |
 | `adjunct_type` | `VARCHAR` | 附件类型; nullable |
 | `pdf_url` | `VARCHAR` | 官方 PDF 链接; nullable |

@@ -39,3 +39,15 @@
 
 1. CNInfo 官方检索页的 stock 参数需要 `证券代码,orgId` 组合，orgId 通过官方 `szse_stock.json` stock lookup 文件解析。
 2. 当前默认只落公告元数据，不把公告正文混进 canonical 日线/财务 provider。
+
+## T-35 Extension: Disclosure Events
+
+2026-07-03 在原 M15 sidecar 上继续扩展，而不是另建一条披露系统：
+
+1. `official_disclosure_item` 继续绑定 `snapshot_id`，但每行现在带 `disclosure_event_id` 与 `disclosure_event_type`，读口按事件 ID 返回去重后的披露事件。
+2. 事件 payload 新增 `body_summary`、`classification_explanation`、`inquiry_status`、`reply_status` 与 `related_announcement_id`，供盘后研究引用正文摘要、公告分类和问询/回复状态。
+3. `fixture_json` 开发链覆盖普通公告、股份回购、交易所问询函、问询回复和重复来源行；`cninfo` live 路径会基于官方公告标题/分类生成保守分类与摘要字段。
+4. `/api/v1/stocks/{symbol}/disclosures` 保持原 endpoint，但返回 source、披露时间、摘要/分类、问询状态和 effective snapshot binding。
+5. workbench 个股详情公告 panel 现在展示分类、披露时间、正文摘要、来源、问询/回复状态与快照绑定。
+
+边界：本扩展没有做 PDF 全文下载、OCR 或深度 NLP 摘要；live CNInfo 没有正文片段时，`body_summary` 是基于官方标题生成的保守短摘要。完整公告正文解析和上交所/深交所深链采集仍是后续增强。

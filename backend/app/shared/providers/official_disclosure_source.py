@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Protocol
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -61,6 +63,29 @@ class FixtureJsonOfficialDisclosureProvider:
         for raw_item in raw_items:
             item = dict(raw_item)
             item.setdefault("trade_date", biz_date)
+            classification = _classify_disclosure(
+                title=str(item.get("title", "")),
+                announcement_type_name=str(item.get("announcement_type_name", "")),
+            )
+            event_type = str(item.get("disclosure_event_type") or classification["event_type"])
+            item["disclosure_event_type"] = event_type
+            if not item.get("disclosure_event_id"):
+                item["disclosure_event_id"] = _derive_disclosure_event_id(
+                    symbol=str(item.get("symbol", "")),
+                    trade_date=str(item.get("trade_date", biz_date)),
+                    title=str(item.get("title", "")),
+                    event_type=event_type,
+                )
+            if not item.get("classification_explanation"):
+                item["classification_explanation"] = classification["classification_explanation"]
+            if not item.get("body_summary"):
+                item["body_summary"] = _build_body_summary(item)
+            if not item.get("inquiry_status"):
+                item["inquiry_status"] = classification["inquiry_status"]
+            if not item.get("reply_status"):
+                item["reply_status"] = classification["reply_status"]
+            if "related_announcement_id" not in item:
+                item["related_announcement_id"] = None
             item.setdefault("source", "fixture_json.official_disclosure")
             item.setdefault("updated_at", f"{biz_date}T18:00:00+08:00")
             items.append(item)
@@ -237,18 +262,45 @@ def _normalize_cninfo_announcement(
     )
     announcement_id = str(payload.get("announcementId", "")).strip()
     adjunct_url = str(payload.get("adjunctUrl", "")).strip()
+    title = str(payload.get("announcementTitle", "")).strip()
+    announcement_type_name = str(payload.get("announcementTypeName", "")).strip() or None
+    classification = _classify_disclosure(
+        title=title,
+        announcement_type_name=announcement_type_name or "",
+    )
+    body_summary = _build_body_summary(
+        {
+            "display_name": display_name,
+            "title": title,
+            "announcement_type_name": announcement_type_name,
+            "classification_explanation": classification["classification_explanation"],
+            "announcement_content": payload.get("announcementContent"),
+        }
+    )
 
     return {
         "symbol": symbol,
         "display_name": display_name,
         "trade_date": announcement_date,
         "announcement_id": announcement_id,
+        "disclosure_event_id": _derive_disclosure_event_id(
+            symbol=symbol,
+            trade_date=announcement_date,
+            title=title,
+            event_type=classification["event_type"],
+        ),
+        "disclosure_event_type": classification["event_type"],
         "org_id": org_id,
-        "title": str(payload.get("announcementTitle", "")).strip(),
+        "title": title,
         "short_title": str(payload.get("shortTitle", "")).strip() or None,
         "announcement_time": announcement_time,
         "announcement_type": str(payload.get("announcementType", "")).strip() or None,
-        "announcement_type_name": str(payload.get("announcementTypeName", "")).strip() or None,
+        "announcement_type_name": announcement_type_name,
+        "classification_explanation": classification["classification_explanation"],
+        "body_summary": body_summary,
+        "inquiry_status": classification["inquiry_status"],
+        "reply_status": classification["reply_status"],
+        "related_announcement_id": None,
         "page_column": str(payload.get("pageColumn", "")).strip() or None,
         "adjunct_type": str(payload.get("adjunctType", "")).strip() or None,
         "pdf_url": f"{CNINFO_PDF_BASE_URL}/{adjunct_url}" if adjunct_url else None,
@@ -260,6 +312,95 @@ def _normalize_cninfo_announcement(
         "source": "cninfo.hisAnnouncement.query",
         "updated_at": fetched_at,
     }
+
+
+def _classify_disclosure(
+    *,
+    title: str,
+    announcement_type_name: str,
+) -> dict[str, str | None]:
+    haystack = f"{title} {announcement_type_name}"
+    if any(keyword in haystack for keyword in ("问询函回复", "回复问询函", "问询函的回复")):
+        return {
+            "event_type": "INQUIRY_REPLY",
+            "classification_explanation": "问询回复类披露，用于确认公司是否已对监管问题给出正式说明。",
+            "inquiry_status": "REPLIED",
+            "reply_status": "REPLY_DISCLOSED",
+        }
+    if any(keyword in haystack for keyword in ("问询函", "关注函", "监管函")):
+        return {
+            "event_type": "INQUIRY",
+            "classification_explanation": "交易所问询类披露，代表监管侧要求公司进一步解释事项，盘后计划应跟踪回复状态。",
+            "inquiry_status": "OPEN",
+            "reply_status": "AWAITING_REPLY",
+        }
+    if "回购" in haystack:
+        return {
+            "event_type": "BUYBACK",
+            "classification_explanation": "股份回购类公告，通常影响资本结构、股东回报预期和短期情绪验证。",
+            "inquiry_status": None,
+            "reply_status": None,
+        }
+    if any(keyword in haystack for keyword in ("董事会", "监事会", "公司治理", "工商变更")):
+        return {
+            "event_type": "GOVERNANCE",
+            "classification_explanation": "公司治理类公告，通常用于解释主体资质、章程或治理结构变化。",
+            "inquiry_status": None,
+            "reply_status": None,
+        }
+    if any(keyword in haystack for keyword in ("业绩说明会", "投资者关系", "调研")):
+        return {
+            "event_type": "INVESTOR_RELATIONS",
+            "classification_explanation": "投资者关系类公告，主要用于跟踪业绩说明会、调研和沟通安排。",
+            "inquiry_status": None,
+            "reply_status": None,
+        }
+    return {
+        "event_type": "DISCLOSURE",
+        "classification_explanation": "一般官方披露事件，盘后研究可作为公司事实更新来源。",
+        "inquiry_status": None,
+        "reply_status": None,
+    }
+
+
+def _derive_disclosure_event_id(
+    *,
+    symbol: str,
+    trade_date: str,
+    title: str,
+    event_type: str,
+) -> str:
+    normalized_title = re.sub(r"\s+", "", title).lower()
+    fingerprint = "|".join([symbol, trade_date, event_type, normalized_title])
+    digest = hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:16]
+    return f"od_evt_{digest}"
+
+
+def _build_body_summary(item: dict[str, object]) -> str | None:
+    existing = item.get("body_summary")
+    if isinstance(existing, str) and existing.strip():
+        return existing.strip()
+
+    raw_body = item.get("announcement_content") or item.get("body")
+    if isinstance(raw_body, str) and raw_body.strip():
+        return _truncate_summary(_clean_text(raw_body), limit=180)
+
+    title = str(item.get("title", "")).strip()
+    if not title:
+        return None
+    display_name = str(item.get("display_name", "")).strip()
+    prefix = f"{display_name}披露" if display_name else "公司披露"
+    return _truncate_summary(f"{prefix}《{title}》。", limit=180)
+
+
+def _clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _truncate_summary(value: str, *, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1].rstrip() + "…"
 
 
 def _symbol_to_code(symbol: str) -> str:

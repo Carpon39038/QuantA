@@ -40,6 +40,37 @@
         "scripts/app_smoke.py"
       ],
       "passes": true
+    },
+    {
+      "id": "disclosure-event-fields",
+      "title": "Disclosure events include body, classification, inquiry, and dedupe fields",
+      "description": "official_disclosure_item includes disclosure_event_id, disclosure_event_type, body_summary, classification_explanation, inquiry_status, reply_status, and related_announcement_id, with docs/generated/db-schema.md refreshed.",
+      "verification": [
+        "python3 scripts/render_db_schema.py",
+        "python3 -m backend.app.domains.market_data.bootstrap --print-summary"
+      ],
+      "passes": true
+    },
+    {
+      "id": "disclosure-event-read-path",
+      "title": "Stock disclosures read path returns deduplicated events",
+      "description": "The stock disclosures API returns event-level rows with source, disclosure time, summary, classification, inquiry/reply status, and effective snapshot binding.",
+      "verification": [
+        "python3 scripts/app_smoke.py",
+        "scripts/smoke.sh"
+      ],
+      "passes": true
+    },
+    {
+      "id": "frontend-disclosure-event-panel",
+      "title": "Workbench renders disclosure event context",
+      "description": "The stock detail disclosure panel shows event category, disclosure time, summary, source, inquiry/reply status, and snapshot binding.",
+      "verification": [
+        "pnpm exec eslint frontend/src/api/types.ts frontend/src/components/StockDetail.tsx --cache --ext .ts,.tsx",
+        "pnpm --dir frontend exec tsc --noEmit",
+        "python3 scripts/app_smoke.py"
+      ],
+      "passes": true
     }
   ]
 }

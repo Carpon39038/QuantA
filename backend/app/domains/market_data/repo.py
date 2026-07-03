@@ -975,12 +975,19 @@ def _query_official_disclosure_asof_rows(
           SELECT
             od.trade_date,
             od.announcement_id,
+            od.disclosure_event_id,
+            od.disclosure_event_type,
             od.org_id,
             od.title,
             od.short_title,
             od.announcement_time,
             od.announcement_type,
             od.announcement_type_name,
+            od.classification_explanation,
+            od.body_summary,
+            od.inquiry_status,
+            od.reply_status,
+            od.related_announcement_id,
             od.page_column,
             od.adjunct_type,
             od.pdf_url,
@@ -990,8 +997,8 @@ def _query_official_disclosure_asof_rows(
             od.snapshot_id AS effective_snapshot_id,
             ap.publish_seq AS effective_publish_seq,
             ROW_NUMBER() OVER (
-              PARTITION BY od.symbol, od.announcement_id
-              ORDER BY ap.publish_seq DESC
+              PARTITION BY od.symbol, COALESCE(NULLIF(od.disclosure_event_id, ''), od.announcement_id)
+              ORDER BY ap.publish_seq DESC, od.updated_at DESC, od.announcement_id ASC
             ) AS row_num
           FROM official_disclosure_item od
           JOIN artifact_publish ap
@@ -1005,12 +1012,19 @@ def _query_official_disclosure_asof_rows(
         SELECT
           trade_date,
           announcement_id,
+          disclosure_event_id,
+          disclosure_event_type,
           org_id,
           title,
           short_title,
           announcement_time,
           announcement_type,
           announcement_type_name,
+          classification_explanation,
+          body_summary,
+          inquiry_status,
+          reply_status,
+          related_announcement_id,
           page_column,
           adjunct_type,
           pdf_url,
@@ -1037,6 +1051,8 @@ def _query_official_disclosure_asof_rows(
         {
             "trade_date": _isoformat(trade_date),
             "announcement_id": str(announcement_id),
+            "disclosure_event_id": str(disclosure_event_id),
+            "disclosure_event_type": str(disclosure_event_type),
             "org_id": str(org_id),
             "title": str(title),
             "short_title": str(short_title) if short_title else None,
@@ -1048,6 +1064,15 @@ def _query_official_disclosure_asof_rows(
             else None,
             "announcement_type_name": str(announcement_type_name)
             if announcement_type_name
+            else None,
+            "classification_explanation": str(classification_explanation)
+            if classification_explanation
+            else None,
+            "body_summary": str(body_summary) if body_summary else None,
+            "inquiry_status": str(inquiry_status) if inquiry_status else None,
+            "reply_status": str(reply_status) if reply_status else None,
+            "related_announcement_id": str(related_announcement_id)
+            if related_announcement_id
             else None,
             "page_column": str(page_column) if page_column else None,
             "adjunct_type": str(adjunct_type) if adjunct_type else None,
@@ -1061,12 +1086,19 @@ def _query_official_disclosure_asof_rows(
         for (
             trade_date,
             announcement_id,
+            disclosure_event_id,
+            disclosure_event_type,
             org_id,
             title,
             short_title,
             announcement_time,
             announcement_type,
             announcement_type_name,
+            classification_explanation,
+            body_summary,
+            inquiry_status,
+            reply_status,
+            related_announcement_id,
             page_column,
             adjunct_type,
             pdf_url,

@@ -409,6 +409,29 @@ def main() -> int:
         assert disclosures_payload["items"][-1]["detail_url"].startswith(
             "https://www.cninfo.com.cn/new/disclosure/detail"
         )
+        disclosure_event_ids = [
+            item["disclosure_event_id"] for item in disclosures_payload["items"]
+        ]
+        assert len(disclosure_event_ids) == len(set(disclosure_event_ids))
+        assert all(item["body_summary"] for item in disclosures_payload["items"])
+        assert all(
+            item["classification_explanation"]
+            for item in disclosures_payload["items"]
+        )
+        assert all(
+            item["source"] and item["effective_snapshot_id"]
+            for item in disclosures_payload["items"]
+        )
+        assert any(
+            item["disclosure_event_type"] == "INQUIRY"
+            and item["inquiry_status"] == "OPEN"
+            for item in disclosures_payload["items"]
+        )
+        assert any(
+            item["disclosure_event_type"] == "INQUIRY_REPLY"
+            and item["reply_status"] == "REPLY_DISCLOSED"
+            for item in disclosures_payload["items"]
+        )
         assert corporate_actions_payload["range"]["row_count"] >= 1
         assert corporate_actions_payload["latest_corporate_action"] is not None
         assert corporate_actions_payload["items"][-1]["action_summary"]

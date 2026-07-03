@@ -38,7 +38,7 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路，并
 7. scheduler 在 source provider 明显领先于最新 READY snapshot 时，会优先 enqueue `history_backfill`；queue/worker 的 `history_backfill` 当前使用 latest artifact 模式：中间历史日只 ingest `raw_snapshot + daily_bar`，窗口终点才发布完整 `artifact_publish/price_series_daily/analysis/screener/backtest`，避免长窗口把全量 price series 按天重复重建。
 8. `history_backfill` 现在同时支持 `lookback_open_days` 与 `target_start_biz_date`；`market_data.sync --lookback-open-days N`、`market_data.sync --target-start-biz-date YYYY-MM-DD`、`POST /api/v1/tasks/history-backfill/run` 和 queue/worker 都可以按最新 source biz date 自动解析滚动回补窗口，或直接把覆盖推进到指定起始日期；若目标终点已有 artifact 且 price series 覆盖已满足目标起点，latest 模式会保持 no-op，不会再发布一条同日快照。
 9. 当 `QUANTA_HISTORY_BACKFILL_TARGET_OPEN_DAYS > 0` 或 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE` 被设置时，scheduler 即使在 source 已追平后，也会把“历史覆盖不足”视为未 settled，并继续 enqueue `history_backfill` 扩最新 READY snapshot 的历史窗口；其中 `QUANTA_HISTORY_BACKFILL_TARGET_START_BIZ_DATE=auto` 会优先消费最新 `history_coverage.recommended_target_start_biz_date`，只有 recommendation 缺失时才回退到 `target_open_days`。
-10. 官方披露现已作为独立 sidecar 接入 `official_disclosure_item`；`fixture_json` 开发链走本地 fixture，live 环境默认走 CNInfo 官方检索页与 stock lookup JSON，不再把披露信息混入 canonical 日线 provider 本体。
+10. 官方披露现已作为独立 sidecar 接入 `official_disclosure_item`；`fixture_json` 开发链走本地 fixture，live 环境默认走 CNInfo 官方检索页与 stock lookup JSON，不再把披露信息混入 canonical 日线 provider 本体。该表现在以 `disclosure_event_id` 表示去重后的披露事件，并带 `body_summary`、`classification_explanation`、`inquiry_status` 与 `reply_status`，供盘后研究引用公告摘要和问询/回复状态。
 11. `tushare` canonical sync 现在会在白天自动回退到最近一个真正有日线的交易日，而不是只依据 `trade_cal` 判断“今天开市”后直接失败。
 12. `shadow_validation` 已接入 `akshare` 与 `baostock` 两条补充源，会把 `open/high/low/close/pre_close/volume/amount/adj_factor` 的逐股对比结果写入 `source_watermark_json`，并经 `/api/v1/snapshot/latest` 与 `/api/v1/system/health` 暴露。
 13. canonical source 现在还会在 sync 时执行 `adj_factor` 覆盖率、板块涨跌停规则、停牌标记一致性，以及 `corporate_action_item + price_series_daily` 的企业行为 reconciliation 自检；若补充源降级或 canonical quality check 报警，会直接写 runtime-local alerts。
@@ -53,7 +53,7 @@ v1.0 可靠性重点不是高并发，而是稳定完成每日盘后链路，并
 1. 真实外部数据源字段漂移和限流仍可能让 `akshare` 或 `baostock` 的补充校验失效；当前实测 `akshare` 在更大研究池上仍会受 Eastmoney 上游链路波动影响，而 `baostock` 的 `adj_factor` 在部分老股票上与 Tushare 存在语义基准差异。
 2. 单机 DuckDB 读写争用仍需要靠“单写者优先”和顺序 smoke 避免。
 3. 当前 source-backed sync 虽已支持更大默认研究池、最小历史回补、CNInfo 公告元数据 sidecar、企业行为 sidecar、企业行为 reconciliation、canonical quality checks、多字段 shadow validation 与调度面接线，但还没有覆盖全市场、完整企业行为修正和自动化长期补数策略。
-4. 官方披露目前还是 metadata-first，尚未纳入公告正文、交易所问询、回复函和跨源去重策略。
+4. 官方披露已从 metadata-first 推进到事件级读口：fixture/dev seed 覆盖正文摘要、交易所问询、回复函、分类解释和重复来源去重；live CNInfo 路径仍是基于标题和官方分类生成保守摘要，尚未做 PDF 全文解析或交易所深链正文抽取。
 5. 回测成交假设仍偏理想化，尚未引入更真实的滑点和撮合约束。
 
 ## Guardrail Direction

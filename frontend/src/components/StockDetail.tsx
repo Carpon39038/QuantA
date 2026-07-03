@@ -63,6 +63,23 @@ function trendLabel(state: PriceVolumeAnalysisResponse['price_state']['trend_sta
   return '未知';
 }
 
+function formatDisclosureTime(value: string | null): string {
+  if (!value) return '--';
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function disclosureStatusLabel(inquiryStatus: string | null, replyStatus: string | null): string | null {
+  if (replyStatus === 'REPLY_DISCLOSED') return '已回复';
+  if (inquiryStatus === 'OPEN') return '待回复';
+  if (inquiryStatus === 'REPLIED') return '已回复';
+  return null;
+}
+
 export function StockDetail({
   stockData,
   selectedSymbol,
@@ -130,6 +147,8 @@ export function StockDetail({
 
   // Fundamentals
   const fund = fundamentals?.latest_fundamental_feature;
+  const disclosureItems = disclosures?.items ?? [];
+  const displayedDisclosures = disclosureItems.slice(-4).reverse();
   const monitorTone =
     monitorItem?.monitoring_status === 'BUY'
       ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
@@ -385,18 +404,59 @@ export function StockDetail({
       )}
 
       {/* Disclosures */}
-      {(disclosures?.items ?? []).length > 0 && (
+      {displayedDisclosures.length > 0 && (
         <div>
-          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">公告</div>
-          <div className="space-y-1.5">
-            {disclosures!.items.map((d, i) => (
-              <div key={i} className="flex items-center justify-between text-xs">
-                <span className="text-white/70 truncate flex-1">{d.title}</span>
-                <span className="text-[10px] text-white/40 shrink-0 ml-2">
-                  {d.announcement_time ? new Date(d.announcement_time).toLocaleDateString('zh-CN') : '--'}
-                </span>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-wider text-white/40">公告</div>
+            <div className="truncate text-[10px] text-white/35">
+              快照 {disclosures?.as_of.snapshot_id ?? '--'}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {displayedDisclosures.map((d) => {
+              const statusLabel = disclosureStatusLabel(d.inquiry_status, d.reply_status);
+              return (
+                <div
+                  key={d.disclosure_event_id}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-[10px] text-blue-200/85">
+                      {d.announcement_type_name ?? d.disclosure_event_type}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-white/40">
+                      {formatDisclosureTime(d.announcement_time)}
+                    </span>
+                  </div>
+                  <div className="truncate text-xs text-white/78">{d.title}</div>
+                  {d.body_summary && (
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-white/55">
+                      {d.body_summary}
+                    </div>
+                  )}
+                  <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-white/38">
+                    <span className="max-w-[160px] truncate">{d.source}</span>
+                    {statusLabel && (
+                      <span className="rounded bg-amber-400/10 px-1.5 text-amber-100/80">
+                        {statusLabel}
+                      </span>
+                    )}
+                    <span>事件 {d.disclosure_event_type}</span>
+                    <span>快照 {d.effective_snapshot_id}</span>
+                  </div>
+                  {d.classification_explanation && (
+                    <div className="mt-1 text-[10px] leading-relaxed text-white/40">
+                      {d.classification_explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {disclosureItems.length > displayedDisclosures.length && (
+              <div className="text-[10px] text-white/35">
+                共 {disclosureItems.length} 条，显示最近 {displayedDisclosures.length} 条
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}

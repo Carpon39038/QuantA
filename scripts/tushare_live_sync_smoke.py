@@ -78,6 +78,25 @@ def main() -> int:
                     [snapshot_id],
                 ).fetchone()[0]
             )
+            (
+                official_disclosure_count,
+                disclosure_event_count,
+                disclosure_body_summary_count,
+                disclosure_classification_count,
+                disclosure_inquiry_count,
+            ) = connection.execute(
+                """
+                SELECT
+                  COUNT(*),
+                  COUNT(DISTINCT disclosure_event_id),
+                  SUM(CASE WHEN body_summary IS NOT NULL THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN classification_explanation IS NOT NULL THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN disclosure_event_type IN ('INQUIRY', 'INQUIRY_REPLY') THEN 1 ELSE 0 END)
+                FROM official_disclosure_item
+                WHERE snapshot_id = ?
+                """,
+                [snapshot_id],
+            ).fetchone()
         finally:
             connection.close()
 
@@ -105,6 +124,11 @@ def main() -> int:
             "artifact_status": json.loads(artifact_status_json),
             "fundamental_feature_count": fundamental_feature_count,
             "corporate_action_count": corporate_action_count,
+            "official_disclosure_count": int(official_disclosure_count or 0),
+            "official_disclosure_event_count": int(disclosure_event_count or 0),
+            "official_disclosure_body_summary_count": int(disclosure_body_summary_count or 0),
+            "official_disclosure_classification_count": int(disclosure_classification_count or 0),
+            "official_disclosure_inquiry_count": int(disclosure_inquiry_count or 0),
             "shadow_validation": json.loads(source_watermark_json).get(
                 "shadow_validation"
             ),

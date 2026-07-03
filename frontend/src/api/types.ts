@@ -250,15 +250,44 @@ export interface FundamentalFeature {
 }
 
 export interface DisclosuresResponse {
+  api_contract_version: string;
   symbol: string;
   display_name: string;
+  as_of: DisclosureAsOf;
+  range: DisclosureRange;
+  latest_disclosure: DisclosureItem | null;
   items: DisclosureItem[];
 }
 
+export interface DisclosureAsOf {
+  snapshot_id: string;
+  publish_seq: number;
+  raw_snapshot_id: string;
+}
+
+export interface DisclosureRange {
+  row_count: number;
+  date_from: string | null;
+  date_to: string | null;
+}
+
 export interface DisclosureItem {
+  trade_date: string;
+  announcement_id: string;
+  disclosure_event_id: string;
+  disclosure_event_type: string;
   title: string;
+  announcement_type_name: string | null;
+  classification_explanation: string | null;
+  body_summary: string | null;
+  inquiry_status: string | null;
+  reply_status: string | null;
+  related_announcement_id: string | null;
   announcement_time: string | null;
   detail_url: string | null;
+  source: string;
+  effective_snapshot_id: string;
+  effective_publish_seq: number;
 }
 
 export interface PriceVolumeAnalysisResponse {
