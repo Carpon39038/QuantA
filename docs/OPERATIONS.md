@@ -77,6 +77,21 @@ chmod 600 data/env/live.env
 
 launchd 模板位于 `ops/launchd/`；三个服务分别是 `com.quanta.pipeline`、`com.quanta.backend` 和 `com.quanta.frontend`。模板统一调用 `bash scripts/ops_entrypoint.sh <service>`，入口脚本会加载 `data/env/live.env`，并在 pipeline 启动前执行最小 schema bootstrap。
 
+`scripts/ops_entrypoint.sh` 会优先使用 `QUANTA_PYTHON_BIN`，否则自动寻找一个能 `import duckdb` 的 `python3`。这是为了避免 macOS launchd 的精简 PATH 或 Homebrew Python 升级后命中缺少项目依赖的解释器。若本机有多个 Python，建议在 `data/env/live.env` 显式设置：
+
+```bash
+QUANTA_PYTHON_BIN=/Applications/Xcode.app/Contents/Developer/usr/bin/python3
+```
+
+live entrypoint 启动 backend 时默认设置 `QUANTA_BACKEND_SKIP_BOOTSTRAP=1`，避免 backend 重启时和 pipeline 单写者抢 DuckDB 写锁。需要重建 schema 或 fixture 时，先停 live pipeline，或显式运行 `scripts/init_dev.sh` / domain bootstrap 命令，再启动服务。
+
+live runtime 默认日志路径取决于 `QUANTA_RUNTIME_DATA_DIR`。如果按 `ops/live.env.example` 使用 `QUANTA_RUNTIME_DATA_DIR=data/live`，核心路径是：
+
+1. DuckDB：`data/live/duckdb/quanta.duckdb`
+2. runtime alerts：`data/live/logs/alerts.jsonl`
+3. resident scheduler JSONL：`data/live/logs/pipeline-daemon.jsonl`
+4. launchd stdout/stderr：`data/logs/launchd-*.stdout.log` 与 `data/logs/launchd-*.stderr.log`
+
 正式 runtime 前，建议先跑一次隔离 canary：
 
 ```bash
@@ -141,6 +156,44 @@ python3 scripts/after_close_check.py \
 ```
 
 `after_close_check.py` 会汇总 `ops_doctor`、backend `/health`、`data/logs/pipeline-daemon.jsonl` 最后一条事件和日志年龄。
+
+## 2026-07-03 Local Launchd Verification
+
+本机已安装并运行三个 launchd label：
+
+1. `com.quanta.backend`
+   监听 `127.0.0.1:18765`
+2. `com.quanta.frontend`
+   监听 `127.0.0.1:24173`
+3. `com.quanta.pipeline`
+   常驻 scheduler，JSONL 写入 `data/live/logs/pipeline-daemon.jsonl`
+
+验证命令：
+
+```bash
+launchctl print gui/501/com.quanta.backend
+launchctl print gui/501/com.quanta.frontend
+launchctl print gui/501/com.quanta.pipeline
+curl -s http://127.0.0.1:18765/health
+curl -s http://127.0.0.1:18765/api/v1/system/health
+curl -s http://127.0.0.1:18765/api/v1/system/alerts
+curl -s http://127.0.0.1:18765/api/v1/runtime
+curl -s http://127.0.0.1:18765/api/v1/preview/watchlist
+bash scripts/ops_entrypoint.sh doctor
+```
+
+2026-07-03 验证结果：
+
+1. launchd 三个 label 均为 `state = running`。
+2. pipeline 最近 tick 持续写入 `data/live/logs/pipeline-daemon.jsonl`，最近状态为 `settled=true`，`pipeline.reason=source_not_newer`。
+3. backend `/health` 返回 `ok`，最新 READY 为 `snapshot_2026-07-02_ready_061`。
+4. `/api/v1/system/health.status=ok`，`source_latest_biz_date=2026-07-02` 与 READY snapshot 持平，history coverage 为 `2025-12-08 -> 2026-07-02`，共 136 个 open days。
+5. `/api/v1/preview/watchlist` 可读取盘中预览，`source_status.status=ok`，provider 为 `tushare_realtime`。
+6. `bash scripts/ops_entrypoint.sh doctor` 在 `--require-http --require-fresh-pipeline-log --fail-on-alert` 口径下完成了真实检查；DB health、source freshness、backend HTTP 和 pipeline JSONL 均通过，但 hard gate 仍失败，因为最近 50 条 alerts 中有 26 条 error 级告警：24 条历史 `scheduler_loop_failure` 和 2 条 `intraday_stop_loss_triggered`。
+7. 修复 entrypoint 后执行过 `launchctl kickstart -k gui/501/com.quanta.pipeline/backend/frontend`。重启后三个 label 重新进入 `running`；backend 由 `QUANTA_BACKEND_SKIP_BOOTSTRAP=1` 只读启动并监听 `127.0.0.1:18765`；frontend 监听 `127.0.0.1:24173`；pipeline tick 重新从 `tick_no=1` 开始写入并保持 `settled=true`。
+8. kickstart 后再次运行 hard gate：backend HTTP、source freshness、open queue、history coverage 与 pipeline JSONL 均通过；最终失败项仍是同一个 `recent_error_alerts=26`。
+
+当前结论：live supervisor 与盘中/盘后常驻链路已能运行并进入 settled；无人值守硬门禁的阻塞点不是服务启动，而是 alert hygiene。下一步需要区分运维错误、交易触发和历史已确认告警，再决定 `--fail-on-alert` 的清理窗口或确认机制。
 
 盘后运行的最低验收：
 

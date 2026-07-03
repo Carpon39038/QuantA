@@ -100,7 +100,11 @@ def _build_findings(
         message=f"system health status is {health.get('status')}",
     )
 
-    error_alerts = [alert for alert in alerts if alert.get("severity") == "error"]
+    error_alerts = [
+        alert
+        for alert in alerts
+        if str(alert.get("severity") or "").lower() == "error"
+    ]
     _add_finding(
         findings,
         name="recent_error_alerts",

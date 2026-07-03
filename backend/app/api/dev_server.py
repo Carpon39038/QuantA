@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -636,11 +637,18 @@ def _coerce_optional_int(value: str | None) -> int | None:
     return int(value)
 
 
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def main() -> int:
     configure_logging()
     settings = load_settings()
     ensure_runtime_directories(settings)
-    bootstrap_dev_runtime(settings)
+    if _env_flag_enabled("QUANTA_BACKEND_SKIP_BOOTSTRAP"):
+        LOGGER.info("Skipping backend dev bootstrap because QUANTA_BACKEND_SKIP_BOOTSTRAP is set")
+    else:
+        bootstrap_dev_runtime(settings)
 
     server = ThreadingHTTPServer(
         (settings.backend_host, settings.backend_port),

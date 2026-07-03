@@ -14,6 +14,13 @@ chmod 600 data/env/live.env
 Then edit `data/env/live.env` and set `QUANTA_TUSHARE_TOKEN`.
 The example also keeps the live runtime in `data/live/` so it does not overwrite the default dev fixture database.
 
+If launchd resolves `python3` to a runtime without project dependencies, set
+`QUANTA_PYTHON_BIN` in `data/env/live.env`. The shared entrypoint also tries to
+auto-detect a Python that can import `duckdb`.
+
+The launchd backend path defaults to `QUANTA_BACKEND_SKIP_BOOTSTRAP=1` so the
+read path does not compete with the pipeline writer during restart.
+
 ## Manual foreground check
 
 ```bash
@@ -41,7 +48,9 @@ done
 ```
 
 The launchd stdout / stderr files are in `data/logs/launchd-*.log`.
-The resident scheduler JSONL stream is in `data/logs/pipeline-daemon.jsonl`.
+The resident scheduler JSONL stream is under the configured runtime data
+directory. With `ops/live.env.example`, that path is
+`data/live/logs/pipeline-daemon.jsonl`.
 
 ## Stop
 
