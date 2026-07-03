@@ -4,6 +4,19 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 
 当前内容表示仓库里已经落地到 DuckDB 的最小表结构，不再是纯规划态列表。
 
+## Snapshot Binding Semantics
+
+1. `raw_snapshot_id` 绑定外部数据源进入系统后的 canonical/raw input；这些表可以按 `raw_snapshot.snapshot_seq` 做 as-of 解析。
+2. `snapshot_id` 绑定通过 `artifact_publish` 门禁发布后的查询产物；查询侧默认只读 `READY` 的 `snapshot_id`。
+3. 回测、任务和请求状态必须同时保留能追溯的 `snapshot_id` 与必要的 `raw_snapshot_id`，避免结果和源数据口径脱钩。
+
+## Dataset Classes
+
+1. Canonical/raw input: `stock_basic`, `trade_calendar`, `raw_snapshot`, `daily_bar`, `benchmark_index_daily_raw`, and the `financial_*_fact` tables.
+2. Published derived artifacts: `artifact_publish`, `price_series_daily`, `benchmark_series_daily`, `indicator_daily`, `pattern_signal_daily`, `capital_feature_daily`, `fundamental_feature_daily`, and `market_regime_daily`.
+3. Published sidecars: `official_disclosure_item` and `corporate_action_item`; they are snapshot-bound enrichments, not canonical market data.
+4. Runtime outputs: screener, backtest, task request/log/event tables; they record reproducible runs and durable request state.
+
 ## Metadata
 
 ### `stock_basic`
@@ -96,6 +109,107 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, trade_date |
 
+### `benchmark_index_daily_raw`
+
+canonical 指数与回测基准原始日线事实表，按 raw_snapshot_id 保留外部数据源输入。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `index_symbol` | `VARCHAR` | 指数代码; required |
+| `display_name` | `VARCHAR` | 指数名称; nullable |
+| `trade_date` | `DATE` | 交易日; required |
+| `open_raw` | `DOUBLE` | 原始开盘点位; nullable |
+| `high_raw` | `DOUBLE` | 原始最高点位; nullable |
+| `low_raw` | `DOUBLE` | 原始最低点位; nullable |
+| `close_raw` | `DOUBLE` | 原始收盘点位; nullable |
+| `pre_close_raw` | `DOUBLE` | 原始前收点位; nullable |
+| `change_pct` | `DOUBLE` | 涨跌幅百分比; nullable |
+| `volume` | `DOUBLE` | 成交量; nullable |
+| `amount` | `DOUBLE` | 成交额; nullable |
+| `source` | `VARCHAR` | 数据来源; required |
+| `raw_payload_json` | `VARCHAR` | 上游原始行 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | raw_snapshot_id, index_symbol, trade_date |
+
+### `financial_fina_indicator_fact`
+
+Tushare fina_indicator_vip 原始财务指标事实表，保留 report period 与 raw_snapshot_id 绑定。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `report_period` | `DATE` | 财报报告期; required |
+| `ann_date` | `DATE` | 公告日期; nullable |
+| `f_ann_date` | `DATE` | 实际公告日期; nullable |
+| `roe_dt` | `DOUBLE` | 扣非 ROE; nullable |
+| `grossprofit_margin` | `DOUBLE` | 毛利率; nullable |
+| `debt_to_assets` | `DOUBLE` | 资产负债率; nullable |
+| `ocf_to_profit` | `DOUBLE` | 经营现金流与利润比; nullable |
+| `source` | `VARCHAR` | 数据来源; required |
+| `raw_payload_json` | `VARCHAR` | 上游原始行 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, report_period |
+
+### `financial_income_fact`
+
+Tushare income_vip 原始利润表事实表，供后续财务追溯与重算使用。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `report_period` | `DATE` | 财报报告期; required |
+| `ann_date` | `DATE` | 公告日期; nullable |
+| `f_ann_date` | `DATE` | 实际公告日期; nullable |
+| `total_revenue` | `DOUBLE` | 营业总收入; nullable |
+| `revenue` | `DOUBLE` | 营业收入; nullable |
+| `operate_profit` | `DOUBLE` | 营业利润; nullable |
+| `total_profit` | `DOUBLE` | 利润总额; nullable |
+| `n_income_attr_p` | `DOUBLE` | 归母净利润; nullable |
+| `source` | `VARCHAR` | 数据来源; required |
+| `raw_payload_json` | `VARCHAR` | 上游原始行 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, report_period |
+
+### `financial_balancesheet_fact`
+
+Tushare balancesheet_vip 原始资产负债表事实表，供后续财务追溯与重算使用。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `report_period` | `DATE` | 财报报告期; required |
+| `ann_date` | `DATE` | 公告日期; nullable |
+| `f_ann_date` | `DATE` | 实际公告日期; nullable |
+| `total_assets` | `DOUBLE` | 总资产; nullable |
+| `total_liab` | `DOUBLE` | 总负债; nullable |
+| `total_hldr_eqy_exc_min_int` | `DOUBLE` | 归母股东权益; nullable |
+| `source` | `VARCHAR` | 数据来源; required |
+| `raw_payload_json` | `VARCHAR` | 上游原始行 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, report_period |
+
+### `financial_cashflow_fact`
+
+Tushare cashflow_vip 原始现金流量表事实表，供后续财务追溯与重算使用。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
+| `symbol` | `VARCHAR` | 证券代码; required |
+| `report_period` | `DATE` | 财报报告期; required |
+| `ann_date` | `DATE` | 公告日期; nullable |
+| `f_ann_date` | `DATE` | 实际公告日期; nullable |
+| `n_cashflow_act` | `DOUBLE` | 经营活动现金流净额; nullable |
+| `c_free_cashflow` | `DOUBLE` | 企业自由现金流; nullable |
+| `source` | `VARCHAR` | 数据来源; required |
+| `raw_payload_json` | `VARCHAR` | 上游原始行 JSON; required |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | raw_snapshot_id, symbol, report_period |
+
 ## Derived Data
 
 ### `price_series_daily`
@@ -118,6 +232,28 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `amount` | `DOUBLE` | 成交额; nullable |
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | snapshot_id, symbol, trade_date, price_basis |
+
+### `benchmark_series_daily`
+
+发布快照绑定的指数与回测基准日线序列，供回测曲线和市场参照读取。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `snapshot_id` | `VARCHAR` | 发布快照标识; required |
+| `index_symbol` | `VARCHAR` | 指数代码; required |
+| `display_name` | `VARCHAR` | 指数名称; nullable |
+| `trade_date` | `DATE` | 交易日; required |
+| `price_basis` | `VARCHAR` | 价格口径; required |
+| `open` | `DOUBLE` | 开盘点位; nullable |
+| `high` | `DOUBLE` | 最高点位; nullable |
+| `low` | `DOUBLE` | 最低点位; nullable |
+| `close` | `DOUBLE` | 收盘点位; nullable |
+| `pre_close` | `DOUBLE` | 前收点位; nullable |
+| `change_pct` | `DOUBLE` | 涨跌幅百分比; nullable |
+| `volume` | `DOUBLE` | 成交量; nullable |
+| `amount` | `DOUBLE` | 成交额; nullable |
+| `updated_at` | `TIMESTAMP` | 写入更新时间; required |
+| `PRIMARY KEY` | `constraint` | snapshot_id, index_symbol, trade_date, price_basis |
 
 ### `indicator_daily`
 
@@ -342,19 +478,27 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 
 ### `backtest_request`
 
-持久化回测请求，当前作为本地 durable queue 的最小载体。
+持久化回测请求，作为 durable request 与 queue 状态的最小载体。
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `backtest_id` | `VARCHAR` | 回测标识; required |
+| `request_type` | `VARCHAR` | 请求类型; required |
 | `requested_at` | `TIMESTAMP` | 请求创建时间; required |
+| `requested_by` | `VARCHAR` | 请求来源; nullable |
 | `snapshot_id` | `VARCHAR` | 发布快照标识; required |
 | `raw_snapshot_id` | `VARCHAR` | 原始快照标识; required |
 | `strategy_version` | `VARCHAR` | 策略版本; required |
 | `signal_price_basis` | `VARCHAR` | 信号价格口径; required |
 | `payload_json` | `VARCHAR` | 请求负载 JSON; required |
 | `status` | `VARCHAR` | 请求状态; required |
+| `queue_state` | `VARCHAR` | 文件队列状态; nullable |
 | `retry_count` | `INTEGER` | 重试次数; required |
+| `max_retries` | `INTEGER` | 最大重试次数; required |
+| `next_attempt_at` | `TIMESTAMP` | 下一次可尝试时间; nullable |
+| `started_at` | `TIMESTAMP` | 开始处理时间; nullable |
+| `finished_at` | `TIMESTAMP` | 结束处理时间; nullable |
+| `updated_at` | `TIMESTAMP` | 最近状态更新时间; nullable |
 | `last_error` | `VARCHAR` | 最近错误信息; nullable |
 | `PRIMARY KEY` | `constraint` | backtest_id |
 
@@ -427,24 +571,76 @@ This file is generated from `backend/app/domains/market_data/schema.py`.
 | `updated_at` | `TIMESTAMP` | 写入更新时间; required |
 | `PRIMARY KEY` | `constraint` | backtest_id, trade_date |
 
+### `task_request`
+
+服务任务 durable request 表，补足文件队列之外的任务请求状态审计。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `request_id` | `VARCHAR` | 任务请求标识; required |
+| `request_type` | `VARCHAR` | 请求类型; required |
+| `task_name` | `VARCHAR` | 任务名称; required |
+| `requested_at` | `TIMESTAMP` | 请求创建时间; required |
+| `requested_by` | `VARCHAR` | 请求来源; nullable |
+| `biz_date` | `DATE` | 业务日期; nullable |
+| `snapshot_id` | `VARCHAR` | 关联发布快照; nullable |
+| `raw_snapshot_id` | `VARCHAR` | 关联原始快照; nullable |
+| `status` | `VARCHAR` | 请求状态; required |
+| `queue_state` | `VARCHAR` | 文件队列状态; nullable |
+| `priority` | `INTEGER` | 队列优先级; required |
+| `attempt_no` | `INTEGER` | 当前尝试次数; required |
+| `max_retries` | `INTEGER` | 最大重试次数; required |
+| `next_attempt_at` | `TIMESTAMP` | 下一次可尝试时间; nullable |
+| `started_at` | `TIMESTAMP` | 开始处理时间; nullable |
+| `finished_at` | `TIMESTAMP` | 结束处理时间; nullable |
+| `error_code` | `VARCHAR` | 错误码; nullable |
+| `error_message` | `VARCHAR` | 错误信息; nullable |
+| `payload_json` | `VARCHAR` | 请求负载 JSON; required |
+| `detail_json` | `VARCHAR` | 补充信息 JSON; nullable |
+| `created_at` | `TIMESTAMP` | 记录创建时间; required |
+| `updated_at` | `TIMESTAMP` | 最近状态更新时间; required |
+| `PRIMARY KEY` | `constraint` | request_id |
+
 ### `task_run_log`
 
-最小任务运行日志，供页面展示运行状态与最近执行时间。
+任务运行日志，供页面展示运行状态与最近执行时间。
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `task_id` | `VARCHAR` | 任务运行标识; required |
+| `request_id` | `VARCHAR` | 关联任务请求; nullable |
+| `raw_snapshot_id` | `VARCHAR` | 关联原始快照; nullable |
 | `task_name` | `VARCHAR` | 任务名称; required |
 | `biz_date` | `DATE` | 业务日期; required |
 | `snapshot_id` | `VARCHAR` | 关联发布快照; required |
 | `attempt_no` | `INTEGER` | 尝试次数; required |
 | `status` | `VARCHAR` | 运行状态; required |
+| `queue_state` | `VARCHAR` | 文件队列状态; nullable |
+| `max_retries` | `INTEGER` | 最大重试次数; required |
+| `next_attempt_at` | `TIMESTAMP` | 下一次可尝试时间; nullable |
 | `error_code` | `VARCHAR` | 错误码; nullable |
 | `error_message` | `VARCHAR` | 错误信息; nullable |
 | `started_at` | `TIMESTAMP` | 开始时间; required |
 | `finished_at` | `TIMESTAMP` | 结束时间; required |
 | `detail_json` | `VARCHAR` | 补充信息 JSON; nullable |
 | `PRIMARY KEY` | `constraint` | task_id |
+
+### `task_status_event`
+
+任务与请求状态事件流水，用于追踪 PENDING/RUNNING/RETRY/SUCCESS/FAILED 的状态传播。
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `event_id` | `VARCHAR` | 状态事件标识; required |
+| `request_id` | `VARCHAR` | 关联请求标识; nullable |
+| `task_id` | `VARCHAR` | 关联任务运行标识; nullable |
+| `event_type` | `VARCHAR` | 事件类型; required |
+| `from_status` | `VARCHAR` | 原状态; nullable |
+| `to_status` | `VARCHAR` | 新状态; required |
+| `attempt_no` | `INTEGER` | 尝试次数; required |
+| `occurred_at` | `TIMESTAMP` | 事件发生时间; required |
+| `detail_json` | `VARCHAR` | 事件详情 JSON; nullable |
+| `PRIMARY KEY` | `constraint` | event_id |
 
 ## Refresh Rule
 

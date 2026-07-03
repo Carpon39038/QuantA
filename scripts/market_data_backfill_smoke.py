@@ -279,6 +279,13 @@ class FakeTusharePro:
                 "pre_close": 2169.0 + day_offset * 8.0,
                 "pct_chg": 0.51,
             },
+            "000300.SH": {
+                "ts_code": "000300.SH",
+                "trade_date": trade_date,
+                "close": 3880.0 + day_offset * 14.0,
+                "pre_close": 3863.0 + day_offset * 14.0,
+                "pct_chg": 0.44,
+            },
         }
         ts_code = kwargs.get("ts_code")
         if ts_code is None:

@@ -34,6 +34,43 @@ REQUIRED_SCHEMA_COLUMNS = {
         "source",
         "updated_at",
     },
+    "benchmark_index_daily_raw": {
+        "index_symbol",
+        "trade_date",
+        "close_raw",
+        "raw_payload_json",
+        "updated_at",
+    },
+    "financial_fina_indicator_fact": {
+        "symbol",
+        "report_period",
+        "roe_dt",
+        "raw_payload_json",
+        "updated_at",
+    },
+    "financial_income_fact": {
+        "symbol",
+        "report_period",
+        "total_revenue",
+        "n_income_attr_p",
+        "raw_payload_json",
+        "updated_at",
+    },
+    "financial_balancesheet_fact": {
+        "symbol",
+        "report_period",
+        "total_assets",
+        "total_liab",
+        "raw_payload_json",
+        "updated_at",
+    },
+    "financial_cashflow_fact": {
+        "symbol",
+        "report_period",
+        "n_cashflow_act",
+        "raw_payload_json",
+        "updated_at",
+    },
     "price_series_daily": {
         "open",
         "high",
@@ -41,6 +78,13 @@ REQUIRED_SCHEMA_COLUMNS = {
         "close",
         "pre_close",
         "adj_factor",
+        "updated_at",
+    },
+    "benchmark_series_daily": {
+        "index_symbol",
+        "trade_date",
+        "close",
+        "price_basis",
         "updated_at",
     },
     "indicator_daily": {
@@ -114,6 +158,7 @@ REQUIRED_SCHEMA_COLUMNS = {
         "risk_flags_json",
     },
     "backtest_request": {
+        "request_type",
         "requested_at",
         "snapshot_id",
         "raw_snapshot_id",
@@ -121,7 +166,10 @@ REQUIRED_SCHEMA_COLUMNS = {
         "signal_price_basis",
         "payload_json",
         "status",
+        "queue_state",
         "retry_count",
+        "max_retries",
+        "next_attempt_at",
     },
     "backtest_trade": {
         "side",
@@ -145,6 +193,33 @@ REQUIRED_SCHEMA_COLUMNS = {
         "daily_return",
         "benchmark_close",
         "updated_at",
+    },
+    "task_request": {
+        "request_id",
+        "request_type",
+        "task_name",
+        "requested_at",
+        "status",
+        "payload_json",
+        "created_at",
+        "updated_at",
+    },
+    "task_run_log": {
+        "task_id",
+        "request_id",
+        "raw_snapshot_id",
+        "task_name",
+        "snapshot_id",
+        "queue_state",
+        "max_retries",
+        "next_attempt_at",
+        "detail_json",
+    },
+    "task_status_event": {
+        "event_id",
+        "event_type",
+        "to_status",
+        "occurred_at",
     },
 }
 
@@ -274,7 +349,16 @@ def _seed_dev_dataset(
         "biz_date": latest_trade_date,
         "status": "READY",
         "required_datasets_json": json.dumps(
-            ["stock_basic", "trade_calendar", "daily_bar"],
+            [
+                "stock_basic",
+                "trade_calendar",
+                "daily_bar",
+                "benchmark_index_daily_raw",
+                "financial_fina_indicator_fact",
+                "financial_income_fact",
+                "financial_balancesheet_fact",
+                "financial_cashflow_fact",
+            ],
             ensure_ascii=False,
         ),
         "completeness_json": json.dumps(
@@ -282,6 +366,11 @@ def _seed_dev_dataset(
                 "stock_basic": "READY",
                 "trade_calendar": "READY",
                 "daily_bar": "READY",
+                "benchmark_index_daily_raw": "READY",
+                "financial_fina_indicator_fact": "READY",
+                "financial_income_fact": "READY",
+                "financial_balancesheet_fact": "READY",
+                "financial_cashflow_fact": "READY",
             },
             ensure_ascii=False,
         ),
@@ -308,7 +397,12 @@ def _seed_dev_dataset(
         "biz_date": previous_trade_date,
         "status": "READY",
         "required_datasets_json": json.dumps(
-            ["stock_basic", "trade_calendar", "daily_bar"],
+            [
+                "stock_basic",
+                "trade_calendar",
+                "daily_bar",
+                "benchmark_index_daily_raw",
+            ],
             ensure_ascii=False,
         ),
         "completeness_json": json.dumps(
@@ -316,6 +410,7 @@ def _seed_dev_dataset(
                 "stock_basic": "READY",
                 "trade_calendar": "READY",
                 "daily_bar": "READY",
+                "benchmark_index_daily_raw": "READY",
             },
             ensure_ascii=False,
         ),
@@ -347,6 +442,7 @@ def _seed_dev_dataset(
         "required_artifacts_json": json.dumps(
             [
                 "price_series_daily",
+                "benchmark_series_daily",
                 "market_regime_daily",
                 "official_disclosure_item",
                 "corporate_action_item",
@@ -363,6 +459,7 @@ def _seed_dev_dataset(
         "artifact_status_json": json.dumps(
             {
                 "price_series_daily": "READY",
+                "benchmark_series_daily": "READY",
                 "market_regime_daily": "READY",
                 "official_disclosure_item": "READY",
                 "corporate_action_item": "READY",
@@ -389,6 +486,7 @@ def _seed_dev_dataset(
         "required_artifacts_json": json.dumps(
             [
                 "price_series_daily",
+                "benchmark_series_daily",
                 "official_disclosure_item",
                 "corporate_action_item",
             ],
@@ -397,6 +495,7 @@ def _seed_dev_dataset(
         "artifact_status_json": json.dumps(
             {
                 "price_series_daily": "READY",
+                "benchmark_series_daily": "READY",
                 "official_disclosure_item": "READY",
                 "corporate_action_item": "READY",
             },
@@ -538,6 +637,24 @@ def _seed_dev_dataset(
     ):
         seeded_any |= _insert_row(connection, "daily_bar", daily_bar_row)
 
+    for benchmark_index_row in _build_seed_benchmark_index_rows(
+        previous_raw_snapshot_id=previous_raw_snapshot_id,
+        previous_updated_at=previous_raw_created_at,
+        latest_raw_snapshot_id=latest_raw_snapshot_id,
+        latest_updated_at=latest_published_at,
+    ):
+        seeded_any |= _insert_row(
+            connection,
+            "benchmark_index_daily_raw",
+            benchmark_index_row,
+        )
+
+    for table_name, financial_fact_row in _build_seed_financial_fact_rows(
+        latest_raw_snapshot_id=latest_raw_snapshot_id,
+        latest_updated_at=latest_published_at,
+    ):
+        seeded_any |= _insert_row(connection, table_name, financial_fact_row)
+
     for price_series_row in _build_seed_price_series_rows(
         previous_snapshot_id=previous_snapshot_id,
         previous_updated_at=previous_published_at,
@@ -546,6 +663,18 @@ def _seed_dev_dataset(
         price_basis=latest_price_basis,
     ):
         seeded_any |= _insert_row(connection, "price_series_daily", price_series_row)
+
+    for benchmark_series_row in _build_seed_benchmark_series_rows(
+        previous_snapshot_id=previous_snapshot_id,
+        previous_updated_at=previous_published_at,
+        latest_snapshot_id=latest_snapshot_id,
+        latest_updated_at=latest_published_at,
+    ):
+        seeded_any |= _insert_row(
+            connection,
+            "benchmark_series_daily",
+            benchmark_series_row,
+        )
 
     for disclosure_row in _build_seed_official_disclosure_rows(
         previous_snapshot_id=previous_snapshot_id,
@@ -767,6 +896,206 @@ def _build_seed_daily_bar_rows(
     ]
 
 
+def _build_seed_benchmark_index_rows(
+    *,
+    previous_raw_snapshot_id: str,
+    previous_updated_at: str,
+    latest_raw_snapshot_id: str,
+    latest_updated_at: str,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "raw_snapshot_id": previous_raw_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-25",
+            "open_raw": 3882.10,
+            "high_raw": 3916.30,
+            "low_raw": 3868.50,
+            "close_raw": 3908.20,
+            "pre_close_raw": 3875.60,
+            "change_pct": 0.84,
+            "volume": 126543210.0,
+            "amount": 254321000000.0,
+            "source": "dev-seed-benchmark",
+            "raw_payload_json": json.dumps(
+                {
+                    "ts_code": "000300.SH",
+                    "trade_date": "20260325",
+                    "close": 3908.20,
+                    "pct_chg": 0.84,
+                },
+                ensure_ascii=False,
+            ),
+            "updated_at": previous_updated_at,
+        },
+        {
+            "raw_snapshot_id": previous_raw_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-26",
+            "open_raw": 3910.50,
+            "high_raw": 3942.80,
+            "low_raw": 3898.70,
+            "close_raw": 3936.40,
+            "pre_close_raw": 3908.20,
+            "change_pct": 0.72,
+            "volume": 132987650.0,
+            "amount": 268900000000.0,
+            "source": "dev-seed-benchmark",
+            "raw_payload_json": json.dumps(
+                {
+                    "ts_code": "000300.SH",
+                    "trade_date": "20260326",
+                    "close": 3936.40,
+                    "pct_chg": 0.72,
+                },
+                ensure_ascii=False,
+            ),
+            "updated_at": previous_updated_at,
+        },
+        {
+            "raw_snapshot_id": latest_raw_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-26",
+            "open_raw": 3910.50,
+            "high_raw": 3948.20,
+            "low_raw": 3898.70,
+            "close_raw": 3940.10,
+            "pre_close_raw": 3908.20,
+            "change_pct": 0.82,
+            "volume": 134222100.0,
+            "amount": 271420000000.0,
+            "source": "dev-seed-benchmark-revision",
+            "raw_payload_json": json.dumps(
+                {
+                    "ts_code": "000300.SH",
+                    "trade_date": "20260326",
+                    "close": 3940.10,
+                    "pct_chg": 0.82,
+                },
+                ensure_ascii=False,
+            ),
+            "updated_at": latest_updated_at,
+        },
+        {
+            "raw_snapshot_id": latest_raw_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-27",
+            "open_raw": 3943.30,
+            "high_raw": 3992.60,
+            "low_raw": 3932.10,
+            "close_raw": 3985.80,
+            "pre_close_raw": 3940.10,
+            "change_pct": 1.16,
+            "volume": 151776000.0,
+            "amount": 309880000000.0,
+            "source": "dev-seed-benchmark",
+            "raw_payload_json": json.dumps(
+                {
+                    "ts_code": "000300.SH",
+                    "trade_date": "20260327",
+                    "close": 3985.80,
+                    "pct_chg": 1.16,
+                },
+                ensure_ascii=False,
+            ),
+            "updated_at": latest_updated_at,
+        },
+    ]
+
+
+def _build_seed_financial_fact_rows(
+    *,
+    latest_raw_snapshot_id: str,
+    latest_updated_at: str,
+) -> list[tuple[str, dict[str, object]]]:
+    fina_payload = {
+        "ts_code": "300750.SZ",
+        "ann_date": "20260327",
+        "end_date": "20251231",
+        "roe_dt": 23.4,
+        "grossprofit_margin": 24.8,
+        "debt_to_assets": 42.1,
+        "ocf_to_profit": 1.24,
+    }
+    income_payload = {
+        "ts_code": "300750.SZ",
+        "ann_date": "20260327",
+        "end_date": "20251231",
+        "total_revenue": 362_013_000_000.0,
+        "n_income_attr_p": 45_210_000_000.0,
+    }
+    balancesheet_payload = {
+        "ts_code": "300750.SZ",
+        "ann_date": "20260327",
+        "end_date": "20251231",
+        "total_assets": 812_450_000_000.0,
+        "total_liab": 342_000_000_000.0,
+    }
+    cashflow_payload = {
+        "ts_code": "300750.SZ",
+        "ann_date": "20260327",
+        "end_date": "20251231",
+        "n_cashflow_act": 56_220_000_000.0,
+    }
+    common = {
+        "raw_snapshot_id": latest_raw_snapshot_id,
+        "symbol": "300750.SZ",
+        "report_period": "2025-12-31",
+        "ann_date": "2026-03-27",
+        "f_ann_date": None,
+        "source": "dev-seed-financial",
+        "updated_at": latest_updated_at,
+    }
+    return [
+        (
+            "financial_fina_indicator_fact",
+            {
+                **common,
+                "roe_dt": 23.4,
+                "grossprofit_margin": 24.8,
+                "debt_to_assets": 42.1,
+                "ocf_to_profit": 1.24,
+                "raw_payload_json": json.dumps(fina_payload, ensure_ascii=False),
+            },
+        ),
+        (
+            "financial_income_fact",
+            {
+                **common,
+                "total_revenue": 362_013_000_000.0,
+                "revenue": None,
+                "operate_profit": None,
+                "total_profit": None,
+                "n_income_attr_p": 45_210_000_000.0,
+                "raw_payload_json": json.dumps(income_payload, ensure_ascii=False),
+            },
+        ),
+        (
+            "financial_balancesheet_fact",
+            {
+                **common,
+                "total_assets": 812_450_000_000.0,
+                "total_liab": 342_000_000_000.0,
+                "total_hldr_eqy_exc_min_int": None,
+                "raw_payload_json": json.dumps(balancesheet_payload, ensure_ascii=False),
+            },
+        ),
+        (
+            "financial_cashflow_fact",
+            {
+                **common,
+                "n_cashflow_act": 56_220_000_000.0,
+                "c_free_cashflow": None,
+                "raw_payload_json": json.dumps(cashflow_payload, ensure_ascii=False),
+            },
+        ),
+    ]
+
+
 def _build_seed_price_series_rows(
     *,
     previous_snapshot_id: str,
@@ -924,6 +1253,97 @@ def _build_seed_price_series_rows(
             "adj_factor": 1.0000,
             "volume": 7123400.0,
             "amount": 947600000.0,
+            "updated_at": latest_updated_at,
+        },
+    ]
+
+
+def _build_seed_benchmark_series_rows(
+    *,
+    previous_snapshot_id: str,
+    previous_updated_at: str,
+    latest_snapshot_id: str,
+    latest_updated_at: str,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "snapshot_id": previous_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-25",
+            "price_basis": "raw",
+            "open": 3882.10,
+            "high": 3916.30,
+            "low": 3868.50,
+            "close": 3908.20,
+            "pre_close": 3875.60,
+            "change_pct": 0.84,
+            "volume": 126543210.0,
+            "amount": 254321000000.0,
+            "updated_at": previous_updated_at,
+        },
+        {
+            "snapshot_id": previous_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-26",
+            "price_basis": "raw",
+            "open": 3910.50,
+            "high": 3942.80,
+            "low": 3898.70,
+            "close": 3936.40,
+            "pre_close": 3908.20,
+            "change_pct": 0.72,
+            "volume": 132987650.0,
+            "amount": 268900000000.0,
+            "updated_at": previous_updated_at,
+        },
+        {
+            "snapshot_id": latest_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-25",
+            "price_basis": "raw",
+            "open": 3882.10,
+            "high": 3916.30,
+            "low": 3868.50,
+            "close": 3908.20,
+            "pre_close": 3875.60,
+            "change_pct": 0.84,
+            "volume": 126543210.0,
+            "amount": 254321000000.0,
+            "updated_at": latest_updated_at,
+        },
+        {
+            "snapshot_id": latest_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-26",
+            "price_basis": "raw",
+            "open": 3910.50,
+            "high": 3948.20,
+            "low": 3898.70,
+            "close": 3940.10,
+            "pre_close": 3908.20,
+            "change_pct": 0.82,
+            "volume": 134222100.0,
+            "amount": 271420000000.0,
+            "updated_at": latest_updated_at,
+        },
+        {
+            "snapshot_id": latest_snapshot_id,
+            "index_symbol": "000300.SH",
+            "display_name": "沪深300",
+            "trade_date": "2026-03-27",
+            "price_basis": "raw",
+            "open": 3943.30,
+            "high": 3992.60,
+            "low": 3932.10,
+            "close": 3985.80,
+            "pre_close": 3940.10,
+            "change_pct": 1.16,
+            "volume": 151776000.0,
+            "amount": 309880000000.0,
             "updated_at": latest_updated_at,
         },
     ]

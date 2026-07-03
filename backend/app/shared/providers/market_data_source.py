@@ -23,6 +23,9 @@ TUSHARE_MARKET_INDEXES = (
     ("399001.SZ", "深证成指"),
     ("399006.SZ", "创业板指"),
 )
+TUSHARE_BENCHMARK_INDEXES = (
+    ("000300.SH", "沪深300"),
+)
 
 
 class TushareRequestError(RuntimeError):
@@ -51,8 +54,13 @@ class MarketDataSnapshot:
     daily_bars: tuple[dict[str, object], ...]
     market_overview: dict[str, object]
     source_watermark: dict[str, object]
+    benchmark_index_rows: tuple[dict[str, object], ...] = ()
     capital_feature_overrides: tuple[dict[str, object], ...] = ()
     fundamental_feature_overrides: tuple[dict[str, object], ...] = ()
+    financial_fina_indicator_rows: tuple[dict[str, object], ...] = ()
+    financial_income_rows: tuple[dict[str, object], ...] = ()
+    financial_balancesheet_rows: tuple[dict[str, object], ...] = ()
+    financial_cashflow_rows: tuple[dict[str, object], ...] = ()
     adj_factor_overrides: tuple[dict[str, object], ...] = ()
 
 
@@ -558,6 +566,11 @@ class TushareMarketDataProvider:
         market_indices, market_index_warnings = _build_tushare_market_indices(
             index_daily_rows
         )
+        benchmark_index_symbols = [
+            str(row["ts_code"])
+            for row in index_daily_rows
+            if row.get("ts_code") not in (None, "")
+        ]
         highlights = [
             "canonical structured source: tushare",
             f"tracked universe size: {len(stock_basic_records)}",
@@ -658,6 +671,8 @@ class TushareMarketDataProvider:
                 "market_index_symbols": [
                     str(item["code"]) for item in market_indices if item.get("code")
                 ],
+                "benchmark_index_count": len(index_daily_rows),
+                "benchmark_index_symbols": benchmark_index_symbols,
                 "adj_factor_count": len(adj_factor_overrides),
                 "adj_factor_missing_symbols": sorted(
                     tracked_symbols.difference(set(adj_factor_by_symbol))
@@ -679,8 +694,19 @@ class TushareMarketDataProvider:
                 "fundamental_feature_count": len(fundamental_feature_overrides),
                 "warnings": warnings,
             },
+            benchmark_index_rows=tuple(dict(item) for item in index_daily_rows),
             capital_feature_overrides=tuple(capital_feature_overrides),
             fundamental_feature_overrides=tuple(fundamental_feature_overrides),
+            financial_fina_indicator_rows=tuple(
+                dict(item) for item in financial_bundle.fina_indicator_rows
+            ),
+            financial_income_rows=tuple(dict(item) for item in financial_bundle.income_rows),
+            financial_balancesheet_rows=tuple(
+                dict(item) for item in financial_bundle.balancesheet_rows
+            ),
+            financial_cashflow_rows=tuple(
+                dict(item) for item in financial_bundle.cashflow_rows
+            ),
             adj_factor_overrides=adj_factor_overrides,
         )
 
@@ -816,7 +842,11 @@ def _load_tushare_index_daily_rows(
     trade_date: str,
 ) -> tuple[list[dict[str, object]], str | None]:
     rows: list[dict[str, object]] = []
-    for ts_code, _name in TUSHARE_MARKET_INDEXES:
+    index_codes = {
+        ts_code: name
+        for ts_code, name in (*TUSHARE_MARKET_INDEXES, *TUSHARE_BENCHMARK_INDEXES)
+    }
+    for ts_code in index_codes:
         try:
             items = _frame_records(
                 _call_tushare_dataset(

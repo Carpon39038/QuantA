@@ -13,6 +13,7 @@ BROKER_FEE_RATE = 0.0003
 STAMP_DUTY_RATE = 0.001
 LOT_SIZE = 100
 SEED_STRATEGY_VERSION = "m4-dev-001"
+DEFAULT_BENCHMARK_SYMBOL = "000300.SH"
 
 
 def ensure_backtest_artifacts(settings: AppSettings) -> dict[str, object]:
@@ -226,6 +227,13 @@ def build_backtest_bundle(
 
     start_date = available_dates[0]
     end_date = available_dates[-1]
+    benchmark_close_by_date = _query_benchmark_close_path(
+        connection,
+        snapshot_id=snapshot_id,
+        benchmark_symbol=DEFAULT_BENCHMARK_SYMBOL,
+        date_from=start_date,
+        date_to=end_date,
+    )
 
     for candidate in candidate_price_paths:
         entry_row = candidate["price_rows"][0]
@@ -339,7 +347,7 @@ def build_backtest_bundle(
                 "equity": round(equity, 2),
                 "drawdown": drawdown,
                 "daily_return": daily_return,
-                "benchmark_close": None,
+                "benchmark_close": benchmark_close_by_date.get(trade_date),
             }
         )
         previous_equity = equity
@@ -387,7 +395,7 @@ def build_backtest_bundle(
         "strategy_version": strategy_version,
         "signal_price_basis": price_basis,
         "engine_version": strategy_version,
-        "benchmark": "000300.SH",
+        "benchmark": DEFAULT_BENCHMARK_SYMBOL,
         "status": "SUCCESS",
         "start_date": start_date,
         "end_date": end_date,
@@ -661,6 +669,33 @@ def _query_raw_price_path(
         }
         for trade_date, open_raw, close_raw in rows
     ]
+
+
+def _query_benchmark_close_path(
+    connection,
+    *,
+    snapshot_id: str,
+    benchmark_symbol: str,
+    date_from: str,
+    date_to: str,
+) -> dict[str, float]:
+    rows = connection.execute(
+        """
+        SELECT trade_date, close
+        FROM benchmark_series_daily
+        WHERE snapshot_id = ?
+          AND index_symbol = ?
+          AND trade_date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+          AND price_basis = 'raw'
+        ORDER BY trade_date ASC
+        """,
+        [snapshot_id, benchmark_symbol, date_from, date_to],
+    ).fetchall()
+    return {
+        str(trade_date): float(close)
+        for trade_date, close in rows
+        if close is not None
+    }
 
 
 def _print_summary(summary: dict[str, object]) -> None:

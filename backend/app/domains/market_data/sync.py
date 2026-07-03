@@ -227,6 +227,21 @@ def _sync_market_data_with_provider(
         source_watermark["adj_factor_overrides"] = [
             dict(item) for item in source_snapshot.adj_factor_overrides
         ]
+    raw_dataset_status = {
+        "stock_basic": "READY",
+        "trade_calendar": "READY",
+        "daily_bar": "READY",
+    }
+    if source_snapshot.benchmark_index_rows:
+        raw_dataset_status["benchmark_index_daily_raw"] = "READY"
+    if source_snapshot.financial_fina_indicator_rows:
+        raw_dataset_status["financial_fina_indicator_fact"] = "READY"
+    if source_snapshot.financial_income_rows:
+        raw_dataset_status["financial_income_fact"] = "READY"
+    if source_snapshot.financial_balancesheet_rows:
+        raw_dataset_status["financial_balancesheet_fact"] = "READY"
+    if source_snapshot.financial_cashflow_rows:
+        raw_dataset_status["financial_cashflow_fact"] = "READY"
 
     if build_artifacts:
         market_overview = dict(source_snapshot.market_overview)
@@ -296,15 +311,8 @@ def _sync_market_data_with_provider(
                 snapshot_seq,
                 source_snapshot.biz_date,
                 "READY",
-                json.dumps(["stock_basic", "trade_calendar", "daily_bar"], ensure_ascii=False),
-                json.dumps(
-                    {
-                        "stock_basic": "READY",
-                        "trade_calendar": "READY",
-                        "daily_bar": "READY",
-                    },
-                    ensure_ascii=False,
-                ),
+                json.dumps(list(raw_dataset_status), ensure_ascii=False),
+                json.dumps(raw_dataset_status, ensure_ascii=False),
                 json.dumps(
                     {
                         **source_watermark,
@@ -326,6 +334,23 @@ def _sync_market_data_with_provider(
             updated_at=published_at,
             source=source_snapshot.source,
         )
+        benchmark_index_count = _insert_benchmark_index_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            rows=list(source_snapshot.benchmark_index_rows),
+            updated_at=published_at,
+            source=source_snapshot.source,
+        )
+        financial_fact_counts = _insert_financial_fact_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            updated_at=published_at,
+            source=source_snapshot.source,
+            fina_indicator_rows=list(source_snapshot.financial_fina_indicator_rows),
+            income_rows=list(source_snapshot.financial_income_rows),
+            balancesheet_rows=list(source_snapshot.financial_balancesheet_rows),
+            cashflow_rows=list(source_snapshot.financial_cashflow_rows),
+        )
 
         if not build_artifacts:
             return {
@@ -341,6 +366,9 @@ def _sync_market_data_with_provider(
                     "stock_basic": len(source_snapshot.stock_basic),
                     "trade_calendar": 1,
                     "daily_bar": len(source_snapshot.daily_bars),
+                    "benchmark_index_daily_raw": benchmark_index_count,
+                    **financial_fact_counts,
+                    "benchmark_series_daily": 0,
                     "price_series_daily": 0,
                     "market_regime_daily": 0,
                     "official_disclosure_item": 0,
@@ -381,6 +409,7 @@ def _sync_market_data_with_provider(
                 json.dumps(
                     [
                         "price_series_daily",
+                        "benchmark_series_daily",
                         "market_regime_daily",
                         "indicator_daily",
                         "pattern_signal_daily",
@@ -401,6 +430,7 @@ def _sync_market_data_with_provider(
                 json.dumps(
                     {
                         "price_series_daily": "PENDING",
+                        "benchmark_series_daily": "PENDING",
                         "market_regime_daily": "PENDING",
                         "indicator_daily": "PENDING",
                         "pattern_signal_daily": "PENDING",
@@ -441,6 +471,12 @@ def _sync_market_data_with_provider(
             updated_at=published_at,
             adj_factor_overrides=source_snapshot.adj_factor_overrides,
         )
+        benchmark_series_count = _materialize_benchmark_series_snapshot(
+            connection,
+            snapshot_id=snapshot_id,
+            raw_snapshot_id=raw_snapshot_id,
+            updated_at=published_at,
+        )
         market_regime_count = _materialize_market_overview_snapshot(
             connection,
             snapshot_id=snapshot_id,
@@ -477,6 +513,7 @@ def _sync_market_data_with_provider(
             status="BUILDING",
             artifact_status={
                 "price_series_daily": "READY",
+                "benchmark_series_daily": "READY",
                 "market_regime_daily": "READY",
                 "indicator_daily": "READY",
                 "pattern_signal_daily": "READY",
@@ -517,7 +554,10 @@ def _sync_market_data_with_provider(
             "stock_basic": len(source_snapshot.stock_basic),
             "trade_calendar": 1,
             "daily_bar": len(source_snapshot.daily_bars),
+            "benchmark_index_daily_raw": benchmark_index_count,
+            **financial_fact_counts,
             "price_series_daily": price_series_count,
+            "benchmark_series_daily": benchmark_series_count,
             "market_regime_daily": market_regime_count,
             "official_disclosure_item": official_disclosure_count,
             "corporate_action_item": corporate_action_count,
@@ -625,8 +665,29 @@ def delete_snapshot_artifacts(
         connection.execute("DELETE FROM official_disclosure_item WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM corporate_action_item WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM market_regime_daily WHERE snapshot_id = ?", [snapshot_id])
+        connection.execute("DELETE FROM benchmark_series_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM price_series_daily WHERE snapshot_id = ?", [snapshot_id])
         connection.execute("DELETE FROM artifact_publish WHERE snapshot_id = ?", [snapshot_id])
+        connection.execute(
+            "DELETE FROM financial_cashflow_fact WHERE raw_snapshot_id = ?",
+            [raw_snapshot_id],
+        )
+        connection.execute(
+            "DELETE FROM financial_balancesheet_fact WHERE raw_snapshot_id = ?",
+            [raw_snapshot_id],
+        )
+        connection.execute(
+            "DELETE FROM financial_income_fact WHERE raw_snapshot_id = ?",
+            [raw_snapshot_id],
+        )
+        connection.execute(
+            "DELETE FROM financial_fina_indicator_fact WHERE raw_snapshot_id = ?",
+            [raw_snapshot_id],
+        )
+        connection.execute(
+            "DELETE FROM benchmark_index_daily_raw WHERE raw_snapshot_id = ?",
+            [raw_snapshot_id],
+        )
         connection.execute("DELETE FROM daily_bar WHERE raw_snapshot_id = ?", [raw_snapshot_id])
         connection.execute("DELETE FROM raw_snapshot WHERE raw_snapshot_id = ?", [raw_snapshot_id])
         if biz_date is not None:
@@ -967,6 +1028,448 @@ def _insert_daily_bar_rows(
                 updated_at,
             ],
         )
+
+
+def _insert_benchmark_index_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    rows: list[dict[str, object]],
+    updated_at: str,
+    source: str,
+) -> int:
+    inserted = 0
+    for row in rows:
+        index_symbol = row.get("index_symbol") or row.get("ts_code") or row.get("code")
+        trade_date = row.get("trade_date")
+        if index_symbol in (None, "") or trade_date in (None, ""):
+            continue
+        connection.execute(
+            """
+            INSERT INTO benchmark_index_daily_raw (
+              raw_snapshot_id,
+              index_symbol,
+              display_name,
+              trade_date,
+              open_raw,
+              high_raw,
+              low_raw,
+              close_raw,
+              pre_close_raw,
+              change_pct,
+              volume,
+              amount,
+              source,
+              raw_payload_json,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            [
+                raw_snapshot_id,
+                str(index_symbol).upper(),
+                row.get("display_name") or row.get("name"),
+                _normalize_date_value(trade_date),
+                _float_or_none(row.get("open")),
+                _float_or_none(row.get("high")),
+                _float_or_none(row.get("low")),
+                _float_or_none(row.get("close")),
+                _float_or_none(row.get("pre_close")),
+                _float_or_none(
+                    row.get("pct_chg") if "pct_chg" in row else row.get("change_pct")
+                ),
+                _float_or_none(row.get("vol") if "vol" in row else row.get("volume")),
+                _float_or_none(row.get("amount")),
+                row.get("source", source),
+                json.dumps(row, ensure_ascii=False, sort_keys=True),
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _insert_financial_fact_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    updated_at: str,
+    source: str,
+    fina_indicator_rows: list[dict[str, object]],
+    income_rows: list[dict[str, object]],
+    balancesheet_rows: list[dict[str, object]],
+    cashflow_rows: list[dict[str, object]],
+) -> dict[str, int]:
+    return {
+        "financial_fina_indicator_fact": _insert_financial_fina_indicator_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            rows=fina_indicator_rows,
+            updated_at=updated_at,
+            source=source,
+        ),
+        "financial_income_fact": _insert_financial_income_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            rows=income_rows,
+            updated_at=updated_at,
+            source=source,
+        ),
+        "financial_balancesheet_fact": _insert_financial_balancesheet_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            rows=balancesheet_rows,
+            updated_at=updated_at,
+            source=source,
+        ),
+        "financial_cashflow_fact": _insert_financial_cashflow_rows(
+            connection,
+            raw_snapshot_id=raw_snapshot_id,
+            rows=cashflow_rows,
+            updated_at=updated_at,
+            source=source,
+        ),
+    }
+
+
+def _insert_financial_fina_indicator_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    rows: list[dict[str, object]],
+    updated_at: str,
+    source: str,
+) -> int:
+    inserted = 0
+    for row in rows:
+        common = _financial_common_values(
+            raw_snapshot_id=raw_snapshot_id,
+            row=row,
+        )
+        if common is None:
+            continue
+        connection.execute(
+            """
+            INSERT INTO financial_fina_indicator_fact (
+              raw_snapshot_id,
+              symbol,
+              report_period,
+              ann_date,
+              f_ann_date,
+              roe_dt,
+              grossprofit_margin,
+              debt_to_assets,
+              ocf_to_profit,
+              source,
+              raw_payload_json,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            [
+                *common,
+                _float_or_none(row.get("roe_dt")),
+                _float_or_none(row.get("grossprofit_margin")),
+                _float_or_none(row.get("debt_to_assets")),
+                _float_or_none(row.get("ocf_to_profit")),
+                source,
+                json.dumps(row, ensure_ascii=False, sort_keys=True),
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _insert_financial_income_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    rows: list[dict[str, object]],
+    updated_at: str,
+    source: str,
+) -> int:
+    inserted = 0
+    for row in rows:
+        common = _financial_common_values(
+            raw_snapshot_id=raw_snapshot_id,
+            row=row,
+        )
+        if common is None:
+            continue
+        connection.execute(
+            """
+            INSERT INTO financial_income_fact (
+              raw_snapshot_id,
+              symbol,
+              report_period,
+              ann_date,
+              f_ann_date,
+              total_revenue,
+              revenue,
+              operate_profit,
+              total_profit,
+              n_income_attr_p,
+              source,
+              raw_payload_json,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            [
+                *common,
+                _float_or_none(row.get("total_revenue")),
+                _float_or_none(row.get("revenue")),
+                _float_or_none(row.get("operate_profit")),
+                _float_or_none(row.get("total_profit")),
+                _float_or_none(row.get("n_income_attr_p")),
+                source,
+                json.dumps(row, ensure_ascii=False, sort_keys=True),
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _insert_financial_balancesheet_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    rows: list[dict[str, object]],
+    updated_at: str,
+    source: str,
+) -> int:
+    inserted = 0
+    for row in rows:
+        common = _financial_common_values(
+            raw_snapshot_id=raw_snapshot_id,
+            row=row,
+        )
+        if common is None:
+            continue
+        connection.execute(
+            """
+            INSERT INTO financial_balancesheet_fact (
+              raw_snapshot_id,
+              symbol,
+              report_period,
+              ann_date,
+              f_ann_date,
+              total_assets,
+              total_liab,
+              total_hldr_eqy_exc_min_int,
+              source,
+              raw_payload_json,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            [
+                *common,
+                _float_or_none(row.get("total_assets")),
+                _float_or_none(row.get("total_liab")),
+                _float_or_none(row.get("total_hldr_eqy_exc_min_int")),
+                source,
+                json.dumps(row, ensure_ascii=False, sort_keys=True),
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _insert_financial_cashflow_rows(
+    connection,
+    *,
+    raw_snapshot_id: str,
+    rows: list[dict[str, object]],
+    updated_at: str,
+    source: str,
+) -> int:
+    inserted = 0
+    for row in rows:
+        common = _financial_common_values(
+            raw_snapshot_id=raw_snapshot_id,
+            row=row,
+        )
+        if common is None:
+            continue
+        connection.execute(
+            """
+            INSERT INTO financial_cashflow_fact (
+              raw_snapshot_id,
+              symbol,
+              report_period,
+              ann_date,
+              f_ann_date,
+              n_cashflow_act,
+              c_free_cashflow,
+              source,
+              raw_payload_json,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            [
+                *common,
+                _float_or_none(row.get("n_cashflow_act")),
+                _float_or_none(row.get("c_free_cashflow")),
+                source,
+                json.dumps(row, ensure_ascii=False, sort_keys=True),
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _financial_common_values(
+    *,
+    raw_snapshot_id: str,
+    row: dict[str, object],
+) -> tuple[str, str, str, str | None, str | None] | None:
+    symbol = row.get("symbol") or row.get("ts_code")
+    report_period = row.get("report_period") or row.get("end_date") or row.get("period")
+    if symbol in (None, "") or report_period in (None, ""):
+        return None
+    return (
+        raw_snapshot_id,
+        str(symbol).upper(),
+        _normalize_date_value(report_period),
+        _normalize_date_value_or_none(row.get("ann_date")),
+        _normalize_date_value_or_none(row.get("f_ann_date")),
+    )
+
+
+def _materialize_benchmark_series_snapshot(
+    connection,
+    *,
+    snapshot_id: str,
+    raw_snapshot_id: str,
+    updated_at: str,
+) -> int:
+    rows = connection.execute(
+        """
+        WITH target AS (
+          SELECT snapshot_seq
+          FROM raw_snapshot
+          WHERE raw_snapshot_id = ?
+        ),
+        ranked AS (
+          SELECT
+            bi.index_symbol,
+            bi.display_name,
+            bi.trade_date,
+            bi.open_raw,
+            bi.high_raw,
+            bi.low_raw,
+            bi.close_raw,
+            bi.pre_close_raw,
+            bi.change_pct,
+            bi.volume,
+            bi.amount,
+            ROW_NUMBER() OVER (
+              PARTITION BY bi.index_symbol, bi.trade_date
+              ORDER BY rs.snapshot_seq DESC
+            ) AS row_num
+          FROM benchmark_index_daily_raw bi
+          JOIN raw_snapshot rs
+            ON rs.raw_snapshot_id = bi.raw_snapshot_id
+          JOIN target
+            ON rs.snapshot_seq <= target.snapshot_seq
+        )
+        SELECT
+          index_symbol,
+          display_name,
+          trade_date,
+          open_raw,
+          high_raw,
+          low_raw,
+          close_raw,
+          pre_close_raw,
+          change_pct,
+          volume,
+          amount
+        FROM ranked
+        WHERE row_num = 1
+        ORDER BY index_symbol ASC, trade_date ASC
+        """,
+        [raw_snapshot_id],
+    ).fetchall()
+
+    connection.execute("DELETE FROM benchmark_series_daily WHERE snapshot_id = ?", [snapshot_id])
+    inserted = 0
+    for (
+        index_symbol,
+        display_name,
+        trade_date,
+        open_raw,
+        high_raw,
+        low_raw,
+        close_raw,
+        pre_close_raw,
+        change_pct,
+        volume,
+        amount,
+    ) in rows:
+        connection.execute(
+            """
+            INSERT INTO benchmark_series_daily (
+              snapshot_id,
+              index_symbol,
+              display_name,
+              trade_date,
+              price_basis,
+              open,
+              high,
+              low,
+              close,
+              pre_close,
+              change_pct,
+              volume,
+              amount,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                snapshot_id,
+                str(index_symbol),
+                display_name,
+                str(trade_date),
+                "raw",
+                open_raw,
+                high_raw,
+                low_raw,
+                close_raw,
+                pre_close_raw,
+                change_pct,
+                volume,
+                amount,
+                updated_at,
+            ],
+        )
+        inserted += 1
+    return inserted
+
+
+def _normalize_date_value(raw_value: object) -> str:
+    normalized = str(raw_value).strip()
+    if len(normalized) == 8 and normalized.isdigit():
+        return f"{normalized[:4]}-{normalized[4:6]}-{normalized[6:8]}"
+    return normalized
+
+
+def _normalize_date_value_or_none(raw_value: object) -> str | None:
+    if raw_value in (None, ""):
+        return None
+    return _normalize_date_value(raw_value)
+
+
+def _float_or_none(raw_value: object) -> float | None:
+    if raw_value in (None, ""):
+        return None
+    return float(raw_value)
 
 
 def _materialize_price_series_snapshot(
