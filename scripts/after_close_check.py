@@ -31,7 +31,30 @@ def main() -> int:
     parser.add_argument(
         "--fail-on-alert",
         action="store_true",
-        help="Fail if recent error alerts are present.",
+        help="Fail if unconfirmed operational error alerts are present.",
+    )
+    parser.add_argument(
+        "--alert-window-hours",
+        type=float,
+        default=None,
+        help=(
+            "Only hard-gate operational error alerts from this rolling window. "
+            "Defaults to QUANTA_ALERT_HARD_GATE_WINDOW_HOURS or 24; set 0 to disable."
+        ),
+    )
+    parser.add_argument(
+        "--alert-acknowledged-before",
+        default=None,
+        help=(
+            "ISO timestamp; operational error alerts at or before it are treated as "
+            "acknowledged history. Defaults to QUANTA_ALERT_ACKNOWLEDGED_BEFORE."
+        ),
+    )
+    parser.add_argument(
+        "--alert-limit",
+        type=int,
+        default=None,
+        help="How many latest alerts to inspect. Defaults to QUANTA_ALERT_LIMIT or 200.",
     )
     parser.add_argument(
         "--backend-url",
@@ -69,6 +92,9 @@ def main() -> int:
     doctor_summary = build_summary(
         live_source=args.live_source,
         fail_on_alert=args.fail_on_alert,
+        alert_window_hours=args.alert_window_hours,
+        alert_acknowledged_before=args.alert_acknowledged_before,
+        alert_limit=args.alert_limit,
     )
     after_close_findings = []
     if not args.skip_http:

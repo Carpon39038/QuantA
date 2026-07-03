@@ -157,6 +157,29 @@ python3 scripts/after_close_check.py \
 
 `after_close_check.py` 会汇总 `ops_doctor`、backend `/health`、`data/logs/pipeline-daemon.jsonl` 最后一条事件和日志年龄。
 
+### Alert Hygiene Gate
+
+`--fail-on-alert` 的硬门禁只拦截“未确认的运维 error”，不是看到任何 `ERROR` severity 都失败。
+
+分类口径：
+
+1. 交易触发类 alert 不作为运维失败处理，包括 `intraday_buy_point_triggered`、`intraday_take_profit_triggered`、`intraday_risk_warning`、`intraday_stop_loss_triggered` 和 `strategy_watchlist_signal`。其中 `intraday_stop_loss_triggered` 可以是 `ERROR`，但含义是盘中止损信号触发，不是 daemon/backend 故障。
+2. 运维 error 包括 `scheduler_loop_failure`、`service_queue_failure`、`backtest_queue_failure` 以及其他非交易类 `ERROR` alert；这些在未确认且仍落入检查窗口时会让 `--fail-on-alert` 失败。
+3. severity 大小写会统一判定，历史上写成 `error`、`ERROR` 都按 error 处理，`warn`、`WARNING` 都只作为 warning。
+4. 默认检查最近 `200` 条 alerts 中过去 `24` 小时内的运维 error。可用 `--alert-limit`、`--alert-window-hours`，或环境变量 `QUANTA_ALERT_LIMIT`、`QUANTA_ALERT_HARD_GATE_WINDOW_HOURS` 调整；`--alert-window-hours 0` 表示不按时间截断。
+5. 已人工确认的历史运维 error 用 `--alert-acknowledged-before <ISO时间>` 或 `QUANTA_ALERT_ACKNOWLEDGED_BEFORE=<ISO时间>` 标记。该时间点及之前的运维 error 会保留在 hygiene 统计里，但不会让 hard gate 失败。
+
+示例：
+
+```bash
+QUANTA_ALERT_ACKNOWLEDGED_BEFORE=2026-07-03T16:04:00+08:00 \
+python3 scripts/after_close_check.py \
+  --live-source \
+  --require-http \
+  --require-fresh-pipeline-log \
+  --fail-on-alert
+```
+
 ## 2026-07-03 Local Launchd Verification
 
 本机已安装并运行三个 launchd label：
@@ -189,11 +212,12 @@ bash scripts/ops_entrypoint.sh doctor
 3. backend `/health` 返回 `ok`，最新 READY 为 `snapshot_2026-07-02_ready_061`。
 4. `/api/v1/system/health.status=ok`，`source_latest_biz_date=2026-07-02` 与 READY snapshot 持平，history coverage 为 `2025-12-08 -> 2026-07-02`，共 136 个 open days。
 5. `/api/v1/preview/watchlist` 可读取盘中预览，`source_status.status=ok`，provider 为 `tushare_realtime`。
-6. `bash scripts/ops_entrypoint.sh doctor` 在 `--require-http --require-fresh-pipeline-log --fail-on-alert` 口径下完成了真实检查；DB health、source freshness、backend HTTP 和 pipeline JSONL 均通过，但 hard gate 仍失败，因为最近 50 条 alerts 中有 26 条 error 级告警：24 条历史 `scheduler_loop_failure` 和 2 条 `intraday_stop_loss_triggered`。
+6. `bash scripts/ops_entrypoint.sh doctor` 在旧 `--fail-on-alert` 口径下完成了真实检查；DB health、source freshness、backend HTTP 和 pipeline JSONL 均通过，但 hard gate 仍失败，因为最近 alerts 中混有历史 `scheduler_loop_failure` 和盘中 `intraday_stop_loss_triggered`。
 7. 修复 entrypoint 后执行过 `launchctl kickstart -k gui/501/com.quanta.pipeline/backend/frontend`。重启后三个 label 重新进入 `running`；backend 由 `QUANTA_BACKEND_SKIP_BOOTSTRAP=1` 只读启动并监听 `127.0.0.1:18765`；frontend 监听 `127.0.0.1:24173`；pipeline tick 重新从 `tick_no=1` 开始写入并保持 `settled=true`。
-8. kickstart 后再次运行 hard gate：backend HTTP、source freshness、open queue、history coverage 与 pipeline JSONL 均通过；最终失败项仍是同一个 `recent_error_alerts=26`。
+8. alert hygiene 后，doctor 的 `recent_error_alerts` finding 会输出 `alert_hygiene` 明细：盘中交易触发 error 单独计入 `trading_signal_error_alerts`，确认时间点之前或窗口之外的 scheduler error 不再阻塞；若窗口内出现新的未确认 `scheduler_loop_failure`、`service_queue_failure` 或其他运维 error，hard gate 仍会失败。
+9. 2026-07-03 使用 `QUANTA_ALERT_ACKNOWLEDGED_BEFORE=2026-07-03T16:04:00+08:00` 跑 live after-close gate：`recent_error_alerts` 通过，`loaded_alerts=200/error_alerts=88/trading_signal_error_alerts=2/outside_window_operational_error_alerts=84/acknowledged_operational_error_alerts=2/unconfirmed_operational_error_alerts=0`；整体 status 仍为 `warn`，原因是当时还有 1 个 `service_processing` queue 文件，不是 alert gate 失败。
 
-当前结论：live supervisor 与盘中/盘后常驻链路已能运行并进入 settled；无人值守硬门禁的阻塞点不是服务启动，而是 alert hygiene。下一步需要区分运维错误、交易触发和历史已确认告警，再决定 `--fail-on-alert` 的清理窗口或确认机制。
+当前结论：live supervisor 与盘中/盘后常驻链路已能运行并进入 settled；无人值守硬门禁现在区分运维错误、交易触发和历史已确认告警。后续如果要让确认动作更可审计，应把 `QUANTA_ALERT_ACKNOWLEDGED_BEFORE` 从 env cutoff 升级为持久化确认记录。
 
 盘后运行的最低验收：
 
@@ -201,7 +225,7 @@ bash scripts/ops_entrypoint.sh doctor
 2. 最新 READY snapshot 的 `biz_date` 等于预期 source 交易日。
 3. `history_coverage.start_biz_date` 不晚于你的运行目标。
 4. `history_coverage.recommended_target_start_biz_date` 要么为空，要么被下一轮 daemon 解析进 runtime 的 `resolved_history_backfill_target_start_biz_date`。
-5. `/api/v1/system/alerts` 没有新的 `error` 级 alert。
+5. `/api/v1/system/alerts` 没有新的未确认运维 `ERROR` alert；盘中交易触发类 alert 需要业务处理，但不表示运行时故障。
 6. 最新 screener 和 backtest payload 的 `snapshot_id` 与最新 READY snapshot 一致。
 
 ## Backfill Deepening
