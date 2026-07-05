@@ -5,8 +5,8 @@ import type {
   IntradayPreviewSourceStatus,
   ScreenerSection,
   StrategyWatchlistItem,
-} from '../api/types';
-import { StockListItem } from './ui/StockListItem';
+} from '../../api/types';
+import { StockListItem } from '../../shared/ui/StockListItem';
 
 interface WatchlistPanelProps {
   screener: ScreenerSection;
@@ -22,6 +22,9 @@ interface WatchlistPanelProps {
   intradaySourceStatus?: IntradayPreviewSourceStatus | null;
   intradayLoading?: boolean;
   intradayError?: string | null;
+  snapshotId?: string;
+  rawSnapshotId?: string;
+  priceBasis?: string;
 }
 
 function statusTone(status: StrategyWatchlistItem['monitoring_status']): string {
@@ -53,6 +56,9 @@ export function WatchlistPanel({
   intradaySourceStatus,
   intradayLoading,
   intradayError,
+  snapshotId,
+  rawSnapshotId,
+  priceBasis,
 }: WatchlistPanelProps) {
   const candidates = screener?.top_candidates ?? [];
   const [symbolInput, setSymbolInput] = useState('');
@@ -96,7 +102,7 @@ export function WatchlistPanel({
           </button>
         </div>
         <div className="mt-2 text-[10px] text-white/35">
-          当前先支持加入已纳入研究池的股票，监控结果会基于最新 READY snapshot 更新。
+          READY 研究依据 {snapshotId?.slice(0, 8) ?? '--'} · raw {rawSnapshotId?.slice(0, 8) ?? '--'} · {priceBasis ?? '--'}
         </div>
         {watchlistError && (
           <div className="mt-2 text-[10px] text-rose-300">{watchlistError}</div>
@@ -116,8 +122,8 @@ export function WatchlistPanel({
         <div className="mb-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[10px] text-white/45">
           <div>
             {intradaySourceStatus?.mode === 'experimental'
-              ? '盘中预览为 experimental，不进入 READY snapshot 或回测。'
-              : '盘中预览仅用于盘中观察。'}
+              ? 'preview 盘中触发为 experimental，不进入 READY snapshot 或回测。'
+              : 'preview 盘中触发仅用于盘中观察。'}
           </div>
           <div className="mt-1">
             {intradayError

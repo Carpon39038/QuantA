@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react';
-import { useSnapshot } from './hooks/useSnapshot';
-import { useSystem } from './hooks/useSystem';
-import { useStock } from './hooks/useStock';
+import { useEffect, useMemo, useState } from 'react';
+import { AppShell } from './app/components/AppShell';
+import { parseAppRoute, stockRoute } from './app/routes';
+import { useBrowserRoute } from './app/useBrowserRoute';
+import { BacktestReportPage } from './features/backtest-report/BacktestReportPage';
+import { IntradayMonitorPage } from './features/intraday-monitor/IntradayMonitorPage';
+import { MarketOverviewPage } from './features/market-overview/MarketOverviewPage';
+import { ScreenerResultsPage } from './features/screener-results/ScreenerResultsPage';
+import { StockDetailPage } from './features/stock-detail/StockDetailPage';
 import { useBacktest } from './hooks/useBacktest';
 import { useIntradayPreviewWatchlist } from './hooks/useIntradayPreviewWatchlist';
+import { useSnapshot } from './hooks/useSnapshot';
+import { useStock } from './hooks/useStock';
 import { useStrategyWatchlist } from './hooks/useStrategyWatchlist';
-import { StatusStrip } from './components/StatusStrip';
-import { TaskSidebar } from './components/TaskSidebar';
-import { MarketPanel } from './components/MarketPanel';
-import { WatchlistPanel } from './components/WatchlistPanel';
-import { StockDetail } from './components/StockDetail';
-import { BacktestPanel } from './components/BacktestPanel';
+import { useSystem } from './hooks/useSystem';
 
 export default function App() {
+  const { pathname, navigate } = useBrowserRoute();
+  const route = useMemo(() => parseAppRoute(pathname), [pathname]);
   const { data: snapshot, loading: snapshotLoading, error: snapshotError } = useSnapshot();
   const { alerts, health, loading: systemLoading } = useSystem();
   const { data: backtestDetail, loading: backtestLoading, error: backtestError } = useBacktest();
@@ -32,18 +36,27 @@ export default function App() {
 
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const { data: stockData, loading: stockLoading, error: stockError } = useStock(selectedStock);
+  const intradayItems = intradayPreview?.items;
+  const intradayItemBySymbol = useMemo(
+    () => new Map((intradayItems ?? []).map((item) => [item.symbol, item])),
+    [intradayItems],
+  );
 
-  // Default to first screener candidate
+  useEffect(() => {
+    if (route.id === 'stock' && route.symbol && route.symbol !== selectedStock) {
+      setSelectedStock(route.symbol);
+    }
+  }, [route.id, route.symbol, selectedStock]);
+
   useEffect(() => {
     if (!selectedStock && snapshot?.screener?.top_candidates?.length) {
       setSelectedStock(snapshot.screener.top_candidates[0].symbol);
     }
   }, [snapshot, selectedStock]);
 
-  // Loading / error state
   if (snapshotLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-white/50 text-sm">
+      <div className="flex min-h-screen items-center justify-center bg-black text-sm text-white/50">
         加载快照数据...
       </div>
     );
@@ -51,7 +64,7 @@ export default function App() {
 
   if (snapshotError) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-rose-400 text-sm">
+      <div className="flex min-h-screen items-center justify-center bg-black text-sm text-rose-400">
         加载失败: {snapshotError}
       </div>
     );
@@ -62,81 +75,127 @@ export default function App() {
   const selectedStockIsMonitored = strategyWatchItems.some((item) => item.symbol === selectedStock);
   const selectedMonitorItem =
     strategyWatchItems.find((item) => item.symbol === selectedStock) ?? null;
-  const intradayItems = intradayPreview?.items ?? [];
-  const intradayItemBySymbol = new Map(
-    intradayItems.map((item) => [item.symbol, item]),
-  );
   const selectedIntradayItem = selectedStock
     ? intradayItemBySymbol.get(selectedStock) ?? null
     : null;
 
+  const handleSelectStock = (symbol: string) => {
+    setSelectedStock(symbol);
+  };
+
+  const handleAddMonitor = async (symbol: string) => {
+    const item = await addStrategyWatch(symbol);
+    setSelectedStock(item.symbol);
+  };
+
+  const handleRemoveMonitor = async (symbol: string) => {
+    await removeStrategyWatch(symbol);
+  };
+
+  const handleToggleSelectedMonitor = async () => {
+    if (!selectedStock) return;
+    if (selectedStockIsMonitored) {
+      await handleRemoveMonitor(selectedStock);
+    } else {
+      await handleAddMonitor(selectedStock);
+    }
+  };
+
+  const openStockDetail = (symbol: string) => {
+    setSelectedStock(symbol);
+    navigate(stockRoute(symbol));
+  };
+
+  const commonStockProps = {
+    selectedStock,
+    stockData,
+    stockLoading,
+    stockError,
+    selectedStockIsMonitored,
+    selectedMonitorItem,
+    selectedIntradayItem,
+    strategyWatchMutating,
+    onToggleSelectedMonitor: handleToggleSelectedMonitor,
+  };
+
+  const page = (() => {
+    if (route.id === 'market') {
+      return (
+        <MarketOverviewPage
+          snapshot={snapshot}
+          alerts={systemLoading ? null : alerts}
+          health={systemLoading ? null : health}
+        />
+      );
+    }
+
+    if (route.id === 'screener') {
+      return (
+        <ScreenerResultsPage
+          snapshot={snapshot}
+          {...commonStockProps}
+          onSelectStock={openStockDetail}
+        />
+      );
+    }
+
+    if (route.id === 'stock') {
+      return (
+        <StockDetailPage
+          snapshot={snapshot}
+          {...commonStockProps}
+        />
+      );
+    }
+
+    if (route.id === 'backtest') {
+      return (
+        <BacktestReportPage
+          snapshot={snapshot}
+          backtestDetail={backtestDetail}
+          backtestLoading={backtestLoading}
+          backtestError={backtestError}
+        />
+      );
+    }
+
+    return (
+      <IntradayMonitorPage
+        snapshot={snapshot}
+        screener={snapshot.screener}
+        monitorItems={strategyWatchItems}
+        selectedStock={selectedStock}
+        stockData={stockData}
+        stockLoading={stockLoading}
+        stockError={stockError}
+        selectedStockIsMonitored={selectedStockIsMonitored}
+        selectedMonitorItem={selectedMonitorItem}
+        selectedIntradayItem={selectedIntradayItem}
+        strategyWatchLoading={strategyWatchLoading}
+        strategyWatchMutating={strategyWatchMutating}
+        strategyWatchError={strategyWatchError}
+        intradayItemsBySymbol={intradayItemBySymbol}
+        intradaySourceStatus={intradayPreview?.source_status ?? null}
+        intradayPreviewLoading={intradayPreviewLoading}
+        intradayPreviewError={intradayPreviewError}
+        onSelectStock={handleSelectStock}
+        onAddMonitor={handleAddMonitor}
+        onRemoveMonitor={handleRemoveMonitor}
+        onToggleSelectedMonitor={handleToggleSelectedMonitor}
+      />
+    );
+  })();
+
   return (
-    <div className="min-h-screen bg-black p-4 md:p-8 text-sm font-sans text-white/90">
-      <div className="w-full max-w-[1600px] mx-auto h-[90vh] bg-[#1C1C1E] rounded-xl shadow-2xl border border-white/10 flex flex-col overflow-hidden">
-        {/* Status Strip */}
-        <StatusStrip snapshot={snapshot} health={systemLoading ? null : health} />
-
-        {/* Main Content */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar: Tasks + Alerts */}
-          <TaskSidebar snapshot={snapshot} alerts={systemLoading ? null : alerts} />
-
-          {/* Center Column: Market + Watchlist */}
-          <div className="w-[360px] border-r border-white/10 flex flex-col shrink-0 bg-[#1C1C1E]">
-            <MarketPanel market={snapshot.market_overview} />
-            <WatchlistPanel
-              screener={snapshot.screener}
-              monitorItems={strategyWatchItems}
-              selectedStock={selectedStock}
-              onSelectStock={setSelectedStock}
-              onAddMonitor={async (symbol) => {
-                const item = await addStrategyWatch(symbol);
-                setSelectedStock(item.symbol);
-              }}
-              onRemoveMonitor={removeStrategyWatch}
-              watchlistLoading={strategyWatchLoading}
-              watchlistMutating={strategyWatchMutating}
-              watchlistError={strategyWatchError}
-              intradayItemsBySymbol={intradayItemBySymbol}
-              intradaySourceStatus={intradayPreview?.source_status ?? null}
-              intradayLoading={intradayPreviewLoading}
-              intradayError={intradayPreviewError}
-            />
-          </div>
-
-          {/* Right Column: Stock Detail + Backtest */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-[#1C1C1E]">
-            <StockDetail
-              stockData={stockData}
-              selectedSymbol={selectedStock}
-              loading={stockLoading}
-              error={stockError}
-              isMonitored={selectedStockIsMonitored}
-              monitorItem={selectedMonitorItem}
-              intradayMonitorItem={selectedIntradayItem}
-              monitoringBusy={strategyWatchMutating}
-              onToggleMonitor={async () => {
-                if (!selectedStock) return;
-                try {
-                  if (selectedStockIsMonitored) {
-                    await removeStrategyWatch(selectedStock);
-                  } else {
-                    await addStrategyWatch(selectedStock);
-                  }
-                } catch {
-                  // Error state is surfaced through the shared watchlist hook.
-                }
-              }}
-            />
-            <BacktestPanel
-              backtest={snapshot.backtest}
-              backtestDetail={backtestDetail}
-              loading={backtestLoading}
-              error={backtestError}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <AppShell
+      snapshot={snapshot}
+      alerts={systemLoading ? null : alerts}
+      health={systemLoading ? null : health}
+      activeRouteId={route.id}
+      selectedSymbol={selectedStock}
+      onNavigate={navigate}
+    >
+      {page}
+    </AppShell>
   );
 }

@@ -1,6 +1,6 @@
-import type { SnapshotResponse, AlertsResponse } from '../api/types';
-import { TaskCard } from './ui/TaskCard';
-import { AlertItem as AlertItemUI } from './ui/AlertItem';
+import type { SnapshotResponse, AlertsResponse } from '../../api/types';
+import { TaskCard } from '../../shared/ui/TaskCard';
+import { AlertItem as AlertItemUI } from '../../shared/ui/AlertItem';
 
 interface TaskSidebarProps {
   snapshot: SnapshotResponse;
@@ -20,7 +20,7 @@ export function TaskSidebar({ snapshot, alerts }: TaskSidebarProps) {
   );
 
   return (
-    <div className="w-[200px] border-r border-white/10 flex flex-col shrink-0 bg-[#1C1C1E] overflow-y-auto hide-scrollbar">
+    <div className="max-h-52 w-full shrink-0 overflow-y-auto border-b border-white/10 bg-[#1C1C1E] lg:max-h-none lg:w-[220px] lg:border-b-0 lg:border-r hide-scrollbar">
       {/* Task Pipeline */}
       <div className="p-3">
         <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">任务流水线</div>

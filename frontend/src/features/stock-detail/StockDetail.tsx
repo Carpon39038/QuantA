@@ -2,15 +2,15 @@ import {
   AreaChart, Area, ResponsiveContainer,
   CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts';
-import type { StockData } from '../hooks/useStock';
+import type { StockData } from '../../hooks/useStock';
 import type {
   IntradayPreviewItem,
   PriceVolumeAnalysisResponse,
   StrategyWatchlistItem,
-} from '../api/types';
-import { cn } from '../lib/cn';
-import { QuoteItem } from './ui/QuoteItem';
-import { TechItem } from './ui/TechItem';
+} from '../../api/types';
+import { cn } from '../../lib/cn';
+import { QuoteItem } from '../../shared/ui/QuoteItem';
+import { TechItem } from '../../shared/ui/TechItem';
 
 interface StockDetailProps {
   stockData: StockData;
@@ -22,6 +22,9 @@ interface StockDetailProps {
   intradayMonitorItem?: IntradayPreviewItem | null;
   monitoringBusy?: boolean;
   onToggleMonitor?: () => Promise<void>;
+  snapshotId?: string;
+  rawSnapshotId?: string;
+  priceBasis?: string;
 }
 
 function formatNum(v: number | null | undefined, digits = 2): string {
@@ -90,6 +93,9 @@ export function StockDetail({
   intradayMonitorItem,
   monitoringBusy,
   onToggleMonitor,
+  snapshotId,
+  rawSnapshotId,
+  priceBasis,
 }: StockDetailProps) {
   if (!selectedSymbol) {
     return (
@@ -137,6 +143,9 @@ export function StockDetail({
     date: item.trade_date,
     price: item.close,
   }));
+  const chartRange = chartData.length > 0
+    ? `${chartData[0].date} -> ${chartData[chartData.length - 1].date}`
+    : '--';
 
   // Indicator data
   const ind = indicators?.latest_indicator;
@@ -177,6 +186,9 @@ export function StockDetail({
             )}
           </div>
           <div className="text-[10px] text-white/40 mt-0.5">{selectedSymbol}</div>
+          <div className="mt-1 text-[10px] text-white/35">
+            READY snapshot {snapshotId?.slice(0, 8) ?? '--'} · raw {rawSnapshotId?.slice(0, 8) ?? '--'} · {priceBasis ?? '--'}
+          </div>
         </div>
         <div className="text-right">
           {onToggleMonitor && (
@@ -312,22 +324,28 @@ export function StockDetail({
 
       {/* Price Chart */}
       {chartData.length > 0 && (
-        <div className="h-[180px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-              <XAxis dataKey="date" stroke="#ffffff30" fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis domain={['dataMin - 10', 'dataMax + 10']} stroke="#ffffff30" fontSize={10} tickLine={false} axisLine={false} orientation="right" />
-              <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', borderColor: '#ffffff10', borderRadius: '8px', fontSize: '12px' }} />
-              <Area type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3 text-[10px] text-white/40">
+            <span>价格曲线</span>
+            <span className="truncate text-right">{kline?.dataset ?? 'price_series'} · {chartRange}</span>
+          </div>
+          <div className="h-[180px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                <XAxis dataKey="date" stroke="#ffffff30" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis domain={['dataMin - 10', 'dataMax + 10']} stroke="#ffffff30" fontSize={10} tickLine={false} axisLine={false} orientation="right" />
+                <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', borderColor: '#ffffff10', borderRadius: '8px', fontSize: '12px' }} />
+                <Area type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 

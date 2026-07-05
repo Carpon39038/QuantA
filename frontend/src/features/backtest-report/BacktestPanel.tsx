@@ -2,18 +2,29 @@ import {
   LineChart, Line, ResponsiveContainer,
   CartesianGrid, XAxis, YAxis, Tooltip,
 } from 'recharts';
-import type { BacktestSection } from '../api/types';
-import type { BacktestDetail } from '../hooks/useBacktest';
-import { cn } from '../lib/cn';
+import type { BacktestSection } from '../../api/types';
+import type { BacktestDetail } from '../../hooks/useBacktest';
+import { cn } from '../../lib/cn';
 
 interface BacktestPanelProps {
   backtest: BacktestSection;
   backtestDetail: BacktestDetail;
   loading?: boolean;
   error?: string | null;
+  snapshotId?: string;
+  rawSnapshotId?: string;
+  priceBasis?: string;
 }
 
-export function BacktestPanel({ backtest, backtestDetail, loading, error }: BacktestPanelProps) {
+export function BacktestPanel({
+  backtest,
+  backtestDetail,
+  loading,
+  error,
+  snapshotId,
+  rawSnapshotId,
+  priceBasis,
+}: BacktestPanelProps) {
   const metrics = backtest?.metrics;
   const notes = backtest?.notes ?? [];
   const curveData = (backtestDetail.equityCurve?.equity_curve ?? []).map((p) => ({
@@ -42,8 +53,16 @@ export function BacktestPanel({ backtest, backtestDetail, loading, error }: Back
     <div className="border-t border-white/10 p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-white/70">回测分析</div>
-        <div className="text-[10px] text-white/40">{backtest?.window ?? '--'}</div>
+        <div>
+          <div className="text-xs font-medium text-white/70">回测分析</div>
+          <div className="mt-0.5 text-[10px] text-white/35">
+            历史回放 · READY snapshot {snapshotId?.slice(0, 8) ?? '--'} · raw {rawSnapshotId?.slice(0, 8) ?? '--'}
+          </div>
+        </div>
+        <div className="text-right text-[10px] text-white/40">
+          <div>{backtest?.window ?? '--'}</div>
+          <div>{priceBasis ?? '--'}</div>
+        </div>
       </div>
 
       {/* Metrics Grid */}

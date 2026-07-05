@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global Buffer, WebSocket, clearTimeout, console, fetch, process, setTimeout */
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -20,6 +21,10 @@ const CHROME_CANDIDATES = [
 
 const REQUIRED_INITIAL_TEXT = [
   '发布快照',
+  '盘中监控',
+  '盘后研究依据',
+  'READY 研究依据',
+  'preview 盘中触发',
   '研究池',
   '补充校验',
   '告警',
@@ -34,16 +39,11 @@ const REQUIRED_INITIAL_TEXT = [
   '候选股票',
   '宁德时代',
   '300750.SZ',
+  '价格曲线',
   '技术指标',
   '形态信号',
   '资金流向',
   '公告',
-  '回测分析',
-  '交易记录',
-  '年化收益',
-  '最大回撤',
-  '胜率',
-  '利润因子',
 ];
 
 const REQUIRED_MONITOR_TEXT = [
@@ -54,6 +54,25 @@ const REQUIRED_MONITOR_TEXT = [
   '止盈',
   '风控',
   '止损',
+];
+
+const ROUTE_CHECKS = [
+  {
+    label: '市场概览',
+    text: ['市场事实', 'READY snapshot', '历史覆盖', '告警摘要', '涨跌分布'],
+  },
+  {
+    label: '选股结果',
+    text: ['选股结果', '候选得分', '量价诊断', '宁德时代', '300750.SZ'],
+  },
+  {
+    label: '个股详情',
+    text: ['个股详情', '量价诊断', '价格曲线', '技术指标', '公告'],
+  },
+  {
+    label: '回测报告',
+    text: ['历史回放结果', '回测报告', '回测分析', '交易记录', '年化收益', '最大回撤', '胜率', '利润因子'],
+  },
 ];
 
 class CdpClient {
@@ -425,6 +444,33 @@ async function main() {
     );
     if (monitored.missing.length) {
       throw new Error(`Monitor render missing text: ${monitored.missing.join(', ')}`);
+    }
+
+    for (const routeCheck of ROUTE_CHECKS) {
+      const navResult = await cdp.evaluate(clickButtonExpression(routeCheck.label));
+      if (!navResult?.clicked) {
+        throw new Error(
+          `Could not click ${routeCheck.label}. Buttons: ${JSON.stringify(navResult?.buttons)}`,
+        );
+      }
+      const routed = await pollEvaluate(
+        cdp,
+        renderedTextExpression(routeCheck.text),
+        `${routeCheck.label} route render`,
+      );
+      if (routed.missing.length) {
+        throw new Error(`${routeCheck.label} route missing text: ${routed.missing.join(', ')}`);
+      }
+    }
+
+    await cdp.send('Page.navigate', { url: `${frontendOrigin}/stocks/300750.SZ` });
+    const directStockRoute = await pollEvaluate(
+      cdp,
+      renderedTextExpression(['个股详情', '300750.SZ', 'READY snapshot', '量价诊断', '价格曲线']),
+      'direct stock route render',
+    );
+    if (directStockRoute.missing.length) {
+      throw new Error(`Direct stock route missing text: ${directStockRoute.missing.join(', ')}`);
     }
 
     if (cdp.runtimeErrors.length || cdp.consoleErrors.length) {

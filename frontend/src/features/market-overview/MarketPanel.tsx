@@ -1,11 +1,13 @@
-import type { MarketOverview } from '../api/types';
-import { IndexCard } from './ui/IndexCard';
+import type { MarketOverview } from '../../api/types';
+import { IndexCard } from '../../shared/ui/IndexCard';
 
 interface MarketPanelProps {
   market: MarketOverview;
+  priceBasis?: string;
+  snapshotId?: string;
 }
 
-export function MarketPanel({ market }: MarketPanelProps) {
+export function MarketPanel({ market, priceBasis, snapshotId }: MarketPanelProps) {
   const breadth = market.breadth;
   const total = breadth?.total || 1;
 
@@ -13,7 +15,10 @@ export function MarketPanel({ market }: MarketPanelProps) {
     <div className="p-3 border-b border-white/10">
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs font-medium text-white/70">市场概览</div>
-        <div className="text-[10px] text-white/40">{market.trade_date}</div>
+        <div className="text-right text-[10px] text-white/40">
+          <div>{market.trade_date}</div>
+          <div>{priceBasis ?? '--'} · {snapshotId?.slice(0, 8) ?? '--'}</div>
+        </div>
       </div>
 
       {/* Index Grid */}

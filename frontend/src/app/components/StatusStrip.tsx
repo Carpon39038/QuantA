@@ -1,6 +1,6 @@
 import { Database, Filter, ShieldAlert, Bell, PlayCircle, Calendar, History } from 'lucide-react';
-import type { SnapshotResponse, SystemHealthResponse } from '../api/types';
-import { StatusCard } from './ui/StatusCard';
+import type { SnapshotResponse, SystemHealthResponse } from '../../api/types';
+import { StatusCard } from '../../shared/ui/StatusCard';
 
 interface StatusStripProps {
   snapshot: SnapshotResponse;
@@ -29,7 +29,7 @@ export function StatusStrip({ snapshot, health }: StatusStripProps) {
   const backtest = snapshot.backtest;
 
   return (
-    <div className="flex gap-3 p-4 border-b border-white/10">
+    <div className="flex gap-3 overflow-x-auto border-b border-white/10 p-4">
       <StatusCard
         title="发布快照"
         value={snapshot.snapshot_id?.slice(0, 8) ?? '--'}
