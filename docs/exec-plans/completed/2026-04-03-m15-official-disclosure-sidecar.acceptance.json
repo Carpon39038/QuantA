@@ -66,7 +66,7 @@
       "title": "Workbench renders disclosure event context",
       "description": "The stock detail disclosure panel shows event category, disclosure time, summary, source, inquiry/reply status, and snapshot binding.",
       "verification": [
-        "pnpm exec eslint frontend/src/api/types.ts frontend/src/components/StockDetail.tsx --cache --ext .ts,.tsx",
+        "pnpm exec eslint frontend/src/api/types.ts frontend/src/features/stock-detail/StockDetail.tsx --cache --ext .ts,.tsx",
         "pnpm --dir frontend exec tsc --noEmit",
         "python3 scripts/app_smoke.py"
       ],

@@ -22,7 +22,7 @@
 2. `pnpm --dir frontend exec tsc --noEmit`
 3. `env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile ...`
 4. live `python3 scripts/tushare_live_sync_smoke.py`
-5. `pnpm exec eslint frontend/src/api/types.ts frontend/src/components/StockDetail.tsx --cache --ext .ts,.tsx`
+5. `pnpm exec eslint frontend/src/api/types.ts frontend/src/features/stock-detail/StockDetail.tsx --cache --ext .ts,.tsx`
 6. `pnpm --dir frontend exec tsc --noEmit`
 7. `python3 scripts/app_smoke.py`
 8. `scripts/smoke.sh`

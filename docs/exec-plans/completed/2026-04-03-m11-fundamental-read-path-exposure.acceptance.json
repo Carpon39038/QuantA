@@ -28,7 +28,7 @@
         "frontend/index.html",
         "frontend/src/main.tsx",
         "frontend/src/App.tsx",
-        "frontend/src/components/StockDetail.tsx",
+        "frontend/src/features/stock-detail/StockDetail.tsx",
         "frontend/src/index.css",
         "scripts/app_smoke.py"
       ],
