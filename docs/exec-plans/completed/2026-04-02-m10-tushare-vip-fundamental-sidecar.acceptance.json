@@ -56,9 +56,9 @@
       "description": "The new financial sidecar work updates repository docs and does not break the existing harness checks.",
       "artifacts": [
         "backend/app/README.md",
-        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.md",
-        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.progress.md",
-        "docs/exec-plans/active/2026-04-02-m10-tushare-vip-fundamental-sidecar.acceptance.json"
+        "docs/exec-plans/completed/2026-04-02-m10-tushare-vip-fundamental-sidecar.md",
+        "docs/exec-plans/completed/2026-04-02-m10-tushare-vip-fundamental-sidecar.progress.md",
+        "docs/exec-plans/completed/2026-04-02-m10-tushare-vip-fundamental-sidecar.acceptance.json"
       ],
       "verify_steps": [
         "python3 scripts/check_harness_docs.py",

@@ -20,7 +20,7 @@ export function MarketPanel({ market }: MarketPanelProps) {
       <div className="grid grid-cols-2 gap-2 mb-3">
         {(market.indices ?? []).map((idx) => (
           <IndexCard
-            key={idx.symbol}
+            key={idx.symbol ?? idx.name}
             name={idx.name}
             price={idx.close.toFixed(2)}
             change={`${idx.is_up ? '+' : ''}${idx.change_pct.toFixed(2)}%`}
@@ -50,14 +50,28 @@ export function MarketPanel({ market }: MarketPanelProps) {
           <div className="text-[10px] text-white/40 mb-1.5">市场要点</div>
           <div className="space-y-1.5">
             {market.highlights.map((h, i) => (
-              <div key={i} className="text-[11px] text-white/60 leading-relaxed">
-                <span className="text-white/80 font-medium">{h.title}</span>
-                {h.detail && <span className="text-white/40"> — {h.detail}</span>}
-              </div>
+              <MarketHighlightItem key={i} highlight={h} />
             ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MarketHighlightItem({ highlight }: { highlight: MarketOverview['highlights'][number] }) {
+  if (typeof highlight === 'string') {
+    return (
+      <div className="text-[11px] text-white/60 leading-relaxed">
+        <span className="text-white/80 font-medium">{highlight}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-[11px] text-white/60 leading-relaxed">
+      <span className="text-white/80 font-medium">{highlight.title}</span>
+      {highlight.detail && <span className="text-white/40"> - {highlight.detail}</span>}
     </div>
   );
 }

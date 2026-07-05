@@ -21,10 +21,8 @@ REQUIRED_FILES = [
     "docs/RELIABILITY.md",
     "docs/SECURITY.md",
     "docs/product-specs/index.md",
-    "docs/exec-plans/active/2026-03-27-m0-harness-bootstrap.md",
-    "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.md",
-    "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.acceptance.json",
-    "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.progress.md",
+    "docs/exec-plans/active/README.md",
+    "docs/exec-plans/completed/README.md",
     "docs/exec-plans/tech-debt-tracker.md",
     "docs/generated/db-schema.md",
     "scripts/check_execution_harness.py",
@@ -67,7 +65,7 @@ def check_active_plan_task_lists() -> list[str]:
     active_plan_dir = ROOT / "docs/exec-plans/active"
 
     for path in sorted(active_plan_dir.glob("*.md")):
-        if path.name.endswith(".progress.md"):
+        if path.name == "README.md" or path.name.endswith(".progress.md"):
             continue
 
         content = path.read_text(encoding="utf-8")

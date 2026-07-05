@@ -22,6 +22,16 @@
 3. `tech-debt-tracker.md`
    不中断当前主线但必须持续跟踪的问题。
 
+## Archive Rule
+
+`active/` 只保留仍在当前交付闭环里的计划。归档时移动同一计划的
+`*.md`、`*.acceptance.json` 和 `*.progress.md` 到 `completed/`，并确保：
+
+1. acceptance 已全绿，或无 acceptance 的旧计划已经被后续计划吸收。
+2. 剩余动作已经写入后续 active plan 或 `tech-debt-tracker.md`。
+3. `completed/README.md` 能说明归档口径。
+4. `scripts/check_execution_harness.py --require-all-passing` 仍通过。
+
 ## Plan Requirements
 
 每份计划至少包含：

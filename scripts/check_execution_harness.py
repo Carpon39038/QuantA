@@ -9,23 +9,14 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLAN_PATH = (
-    ROOT / "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.md"
-)
-ACCEPTANCE_PATH = (
-    ROOT
-    / "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.acceptance.json"
-)
-PROGRESS_PATH = (
-    ROOT
-    / "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.progress.md"
-)
+ACTIVE_PLAN_DIR = ROOT / "docs/exec-plans/active"
+COMPLETED_PLAN_DIR = ROOT / "docs/exec-plans/completed"
 
 REQUIRED_PROGRESS_HEADINGS = [
-    "## Current State",
-    "## Last Completed",
+    ("## Current State", "## Current Status"),
+    ("## Next Step", "## Next"),
+    "## Completed",
     "## Verification",
-    "## Next Step",
 ]
 
 DOC_EXPECTATIONS = {
@@ -56,43 +47,90 @@ DOC_EXPECTATIONS = {
 }
 
 
-def check_required_paths() -> list[str]:
+def acceptance_paths() -> list[Path]:
+    paths: list[Path] = []
+    for plan_dir in [ACTIVE_PLAN_DIR, COMPLETED_PLAN_DIR]:
+        paths.extend(sorted(plan_dir.glob("*.acceptance.json")))
+    return paths
+
+
+def artifact_stem(path: Path) -> str:
+    return path.name[: -len(".acceptance.json")]
+
+
+def plan_path_for_acceptance(path: Path) -> Path:
+    return path.with_name(f"{artifact_stem(path)}.md")
+
+
+def progress_path_for_acceptance(path: Path) -> Path:
+    return path.with_name(f"{artifact_stem(path)}.progress.md")
+
+
+def check_required_paths(paths: list[Path]) -> list[str]:
     errors: list[str] = []
-    for path in [PLAN_PATH, ACCEPTANCE_PATH, PROGRESS_PATH]:
+    for path in [ACTIVE_PLAN_DIR, COMPLETED_PLAN_DIR]:
         if not path.exists():
-            errors.append(f"missing execution harness artifact: {path.relative_to(ROOT)}")
+            errors.append(f"missing execution plan directory: {path.relative_to(ROOT)}")
+    if not paths:
+        errors.append("missing execution harness acceptance artifacts")
+    for path in paths:
+        for related_path in [
+            plan_path_for_acceptance(path),
+            path,
+            progress_path_for_acceptance(path),
+        ]:
+            if not related_path.exists():
+                errors.append(
+                    "missing execution harness artifact: "
+                    f"{related_path.relative_to(ROOT)}"
+                )
     return errors
 
 
-def check_plan_structure() -> list[str]:
+def check_active_plan_structure(plan_path: Path) -> list[str]:
     errors: list[str] = []
-    content = PLAN_PATH.read_text(encoding="utf-8")
+    content = plan_path.read_text(encoding="utf-8")
 
     required_sections = [
         "## Goal",
         "## Scope",
         "## Non-Goals",
+        "## Acceptance",
         "## Done When",
         "## Verify By",
         "## Tasks",
-        "## Decisions",
         "## Status",
     ]
 
     for section in required_sections:
         if section not in content:
-            errors.append(f"execution harness plan is missing section: {section}")
+            errors.append(
+                f"active execution plan {plan_path.relative_to(ROOT)} "
+                f"is missing section: {section}"
+            )
 
     return errors
 
 
-def check_progress_structure() -> list[str]:
+def check_active_progress_structure(progress_path: Path) -> list[str]:
     errors: list[str] = []
-    content = PROGRESS_PATH.read_text(encoding="utf-8")
+    content = progress_path.read_text(encoding="utf-8")
 
-    for heading in REQUIRED_PROGRESS_HEADINGS:
-        if heading not in content:
-            errors.append(f"progress handoff is missing heading: {heading}")
+    for expectation in REQUIRED_PROGRESS_HEADINGS:
+        if isinstance(expectation, tuple):
+            if not any(heading in content for heading in expectation):
+                expected = " or ".join(expectation)
+                errors.append(
+                    f"active progress handoff {progress_path.relative_to(ROOT)} "
+                    f"is missing heading: {expected}"
+                )
+            continue
+
+        if expectation not in content:
+            errors.append(
+                f"active progress handoff {progress_path.relative_to(ROOT)} "
+                f"is missing heading: {expectation}"
+            )
 
     return errors
 
@@ -107,19 +145,20 @@ def check_doc_expectations() -> list[str]:
     return errors
 
 
-def load_acceptance() -> tuple[dict[str, object] | None, list[str]]:
+def load_acceptance(path: Path) -> tuple[dict[str, object] | None, list[str]]:
     try:
-        data = json.loads(ACCEPTANCE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        return None, [f"acceptance file is not valid JSON: {exc}"]
+        return None, [f"{path.relative_to(ROOT)} is not valid JSON: {exc}"]
 
     if not isinstance(data, dict):
-        return None, ["acceptance file must be a JSON object"]
+        return None, [f"{path.relative_to(ROOT)} must be a JSON object"]
 
     return data, []
 
 
 def check_acceptance_items(
+    path: Path,
     acceptance: dict[str, object],
     require_all_passing: bool,
 ) -> tuple[list[str], dict[str, object]]:
@@ -130,14 +169,15 @@ def check_acceptance_items(
         "pending_ids": [],
     }
 
-    required_top_level_keys = ["plan_id", "title", "status", "updated_at", "items"]
+    relative_path = path.relative_to(ROOT)
+    required_top_level_keys = ["plan_id", "title", "items"]
     for key in required_top_level_keys:
         if key not in acceptance:
-            errors.append(f"acceptance file is missing key: {key}")
+            errors.append(f"{relative_path} is missing key: {key}")
 
     items = acceptance.get("items")
     if not isinstance(items, list) or not items:
-        errors.append("acceptance file must contain a non-empty items list")
+        errors.append(f"{relative_path} must contain a non-empty items list")
         return errors, summary
 
     seen_ids: set[str] = set()
@@ -146,68 +186,77 @@ def check_acceptance_items(
 
     for index, item in enumerate(items, start=1):
         if not isinstance(item, dict):
-            errors.append(f"acceptance item #{index} must be an object")
+            errors.append(f"{relative_path} item #{index} must be an object")
             continue
 
         required_item_keys = [
             "id",
             "title",
-            "priority",
             "description",
-            "artifacts",
-            "verify_steps",
             "passes",
         ]
         for key in required_item_keys:
             if key not in item:
-                errors.append(f"acceptance item #{index} is missing key: {key}")
+                errors.append(f"{relative_path} item #{index} is missing key: {key}")
 
         item_id = item.get("id")
         if not isinstance(item_id, str) or not item_id:
-            errors.append(f"acceptance item #{index} has invalid id")
+            errors.append(f"{relative_path} item #{index} has invalid id")
         elif item_id in seen_ids:
-            errors.append(f"duplicate acceptance item id: {item_id}")
+            errors.append(f"{relative_path} has duplicate acceptance item id: {item_id}")
         else:
             seen_ids.add(item_id)
 
         priority = item.get("priority")
-        if not isinstance(priority, int) or priority < 1 or priority > 3:
+        if priority is not None and (
+            not isinstance(priority, int) or priority < 1 or priority > 3
+        ):
             errors.append(
-                f"acceptance item {item_id or f'#{index}'} has invalid priority: {priority}"
+                f"{relative_path} item {item_id or f'#{index}'} "
+                f"has invalid priority: {priority}"
             )
 
         artifacts = item.get("artifacts")
-        if not isinstance(artifacts, list) or not artifacts:
-            errors.append(f"acceptance item {item_id or f'#{index}'} must list artifacts")
-        else:
+        if artifacts is not None:
+            if not isinstance(artifacts, list) or not artifacts:
+                errors.append(
+                    f"{relative_path} item {item_id or f'#{index}'} "
+                    "must list artifacts when artifacts is present"
+                )
+                continue
             for artifact in artifacts:
                 if not isinstance(artifact, str) or not artifact:
                     errors.append(
-                        f"acceptance item {item_id or f'#{index}'} has invalid artifact path"
+                        f"{relative_path} item {item_id or f'#{index}'} "
+                        "has invalid artifact path"
                     )
                     continue
                 artifact_path = ROOT / artifact
                 if not artifact_path.exists():
                     errors.append(
-                        f"acceptance item {item_id or f'#{index}'} references missing artifact: {artifact}"
+                        f"{relative_path} item {item_id or f'#{index}'} "
+                        f"references missing artifact: {artifact}"
                     )
 
-        verify_steps = item.get("verify_steps")
+        verify_steps = item.get("verify_steps", item.get("verification"))
         if not isinstance(verify_steps, list) or not verify_steps:
             errors.append(
-                f"acceptance item {item_id or f'#{index}'} must define verify_steps"
+                f"{relative_path} item {item_id or f'#{index}'} "
+                "must define verify_steps or verification"
             )
         else:
             for step in verify_steps:
                 if not isinstance(step, str) or not step:
                     errors.append(
-                        f"acceptance item {item_id or f'#{index}'} has invalid verify step"
+                        f"{relative_path} item {item_id or f'#{index}'} "
+                        "has invalid verify step"
                     )
 
         passes = item.get("passes")
         if not isinstance(passes, bool):
             errors.append(
-                f"acceptance item {item_id or f'#{index}'} must use a boolean passes flag"
+                f"{relative_path} item {item_id or f'#{index}'} "
+                "must use a boolean passes flag"
             )
             continue
 
@@ -222,7 +271,8 @@ def check_acceptance_items(
 
     if require_all_passing and pending_ids:
         errors.append(
-            "not all acceptance items are passing: " + ", ".join(pending_ids)
+            f"{relative_path} has non-passing acceptance items: "
+            + ", ".join(pending_ids)
         )
 
     return errors, summary
@@ -248,8 +298,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+    paths = acceptance_paths()
     errors: list[str] = []
-    errors.extend(check_required_paths())
+    errors.extend(check_required_paths(paths))
 
     if errors:
         print("Execution harness check failed:")
@@ -257,20 +308,37 @@ def main() -> int:
             print(f"- {error}")
         return 1
 
-    errors.extend(check_plan_structure())
-    errors.extend(check_progress_structure())
     errors.extend(check_doc_expectations())
 
-    acceptance, acceptance_errors = load_acceptance()
-    errors.extend(acceptance_errors)
-    summary: dict[str, object] = {"total": 0, "passing": 0, "pending_ids": []}
+    total = 0
+    passing = 0
+    pending_by_plan: dict[str, list[str]] = {}
 
-    if acceptance is not None:
+    for path in paths:
+        if path.parent == ACTIVE_PLAN_DIR:
+            errors.extend(check_active_plan_structure(plan_path_for_acceptance(path)))
+            errors.extend(
+                check_active_progress_structure(progress_path_for_acceptance(path))
+            )
+
+        acceptance, acceptance_errors = load_acceptance(path)
+        errors.extend(acceptance_errors)
+
+        if acceptance is None:
+            continue
+
         item_errors, summary = check_acceptance_items(
+            path=path,
             acceptance=acceptance,
             require_all_passing=args.require_all_passing,
         )
         errors.extend(item_errors)
+
+        total += int(summary["total"])
+        passing += int(summary["passing"])
+        pending_ids = summary["pending_ids"]
+        if isinstance(pending_ids, list) and pending_ids:
+            pending_by_plan[artifact_stem(path)] = [str(item) for item in pending_ids]
 
     if errors:
         print("Execution harness check failed:")
@@ -280,11 +348,17 @@ def main() -> int:
 
     print("Execution harness check passed.")
     if args.print_summary:
-        pending_ids = summary["pending_ids"]
-        pending_text = ", ".join(pending_ids) if pending_ids else "none"
+        if pending_by_plan:
+            pending_text = "; ".join(
+                f"{plan}: {', '.join(ids)}"
+                for plan, ids in sorted(pending_by_plan.items())
+            )
+        else:
+            pending_text = "none"
         print(
             "Acceptance summary: "
-            f"{summary['passing']}/{summary['total']} passing; pending: {pending_text}"
+            f"{passing}/{total} passing across {len(paths)} plans; "
+            f"pending: {pending_text}"
         )
 
     return 0

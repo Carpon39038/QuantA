@@ -19,7 +19,7 @@
 ## Verification
 
 1. `scripts/smoke.sh`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile ...`
 4. live `python3 scripts/tushare_live_sync_smoke.py`
 5. `pnpm exec eslint frontend/src/api/types.ts frontend/src/components/StockDetail.tsx --cache --ext .ts,.tsx`

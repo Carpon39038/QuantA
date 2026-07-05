@@ -55,12 +55,13 @@
       "priority": 2,
       "description": "The frontend workbench reads latest snapshot, screener, stock detail, and backtest detail APIs to render a richer v1.0 research shell.",
       "artifacts": [
-        "frontend/src/app/index.html",
-        "frontend/src/app/main.js",
-        "frontend/src/app/main.css"
+        "frontend/index.html",
+        "frontend/src/main.tsx",
+        "frontend/src/App.tsx",
+        "frontend/src/index.css"
       ],
       "verify_steps": [
-        "node --check frontend/src/app/main.js",
+        "pnpm --dir frontend exec tsc --noEmit",
         "scripts/smoke.sh"
       ],
       "passes": true

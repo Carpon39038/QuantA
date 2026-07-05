@@ -9,7 +9,7 @@
 ## Verification
 
 1. `env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/domains/market_data/repo.py`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `scripts/smoke.sh`
 4. `python3 scripts/check_harness_docs.py`
 5. `python3 scripts/check_execution_harness.py --require-all-passing`

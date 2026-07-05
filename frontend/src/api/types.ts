@@ -20,7 +20,7 @@ export interface MarketOverview {
   regime_label: string;
   indices: IndexData[];
   breadth: MarketBreadth;
-  highlights: MarketHighlight[];
+  highlights: Array<MarketHighlight | string>;
 }
 
 export interface IndexData {
@@ -112,9 +112,20 @@ export interface SystemHealthResponse {
   snapshot_id: string;
   status: string;
   alert_summary: AlertSummary;
+  history_coverage: HistoryCoverage;
+  shadow_validation: ShadowValidation;
   table_counts: Record<string, number>;
   task_count: number;
   alert_count: number;
+}
+
+export interface HistoryCoverage {
+  start_biz_date: string | null;
+  end_biz_date: string | null;
+  open_day_count: number;
+  recommended_target_start_biz_date: string | null;
+  recommendation_reason: string | null;
+  recommendation_anchor_biz_date: string | null;
 }
 
 export interface AlertSummary {

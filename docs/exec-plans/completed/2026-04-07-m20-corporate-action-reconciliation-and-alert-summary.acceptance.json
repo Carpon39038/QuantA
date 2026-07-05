@@ -27,7 +27,7 @@
       "title": "Workbench surfaces provider incident summary",
       "description": "Frontend reads alert summary and shows provider incidents and clearer alert meta, not only the raw alerts list.",
       "verification": [
-        "node --check frontend/src/app/main.js",
+        "pnpm --dir frontend exec tsc --noEmit",
         "scripts/smoke.sh"
       ],
       "passes": true

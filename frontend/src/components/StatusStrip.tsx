@@ -1,4 +1,4 @@
-import { Database, Filter, ShieldAlert, Bell, PlayCircle, Calendar } from 'lucide-react';
+import { Database, Filter, ShieldAlert, Bell, PlayCircle, Calendar, History } from 'lucide-react';
 import type { SnapshotResponse, SystemHealthResponse } from '../api/types';
 import { StatusCard } from './ui/StatusCard';
 
@@ -18,6 +18,10 @@ export function StatusStrip({ snapshot, health }: StatusStripProps) {
   const alertWarnCount = health?.alert_summary?.severity_counts?.WARNING ?? 0;
   const alertTotal = alertErrorCount + alertWarnCount;
   const alertStatus = alertErrorCount > 0 ? 'error' : alertWarnCount > 0 ? 'warn' : 'success';
+  const historyCoverage = health?.history_coverage;
+  const historyCoverageSpan = historyCoverage?.start_biz_date && historyCoverage.end_biz_date
+    ? `${historyCoverage.start_biz_date} -> ${historyCoverage.end_biz_date}`
+    : undefined;
 
   const screener = snapshot.screener;
   const candidateCount = screener?.top_candidates?.length ?? 0;
@@ -52,6 +56,13 @@ export function StatusStrip({ snapshot, health }: StatusStripProps) {
         subValue={`${alertErrorCount} 错误 / ${alertWarnCount} 警告`}
         status={alertStatus}
         icon={<Bell size={14} />}
+      />
+      <StatusCard
+        title="历史覆盖"
+        value={historyCoverage ? `${historyCoverage.open_day_count}日` : '--'}
+        subValue={historyCoverageSpan}
+        status={historyCoverage && historyCoverage.open_day_count > 0 ? 'success' : 'neutral'}
+        icon={<History size={14} />}
       />
       <StatusCard
         title="选股运行"

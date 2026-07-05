@@ -25,13 +25,15 @@
       "priority": 1,
       "description": "The frontend reads the fundamentals payload and renders a financial-side panel in stock detail.",
       "artifacts": [
-        "frontend/src/app/index.html",
-        "frontend/src/app/main.js",
-        "frontend/src/app/main.css",
+        "frontend/index.html",
+        "frontend/src/main.tsx",
+        "frontend/src/App.tsx",
+        "frontend/src/components/StockDetail.tsx",
+        "frontend/src/index.css",
         "scripts/app_smoke.py"
       ],
       "verify_steps": [
-        "node --check frontend/src/app/main.js",
+        "pnpm --dir frontend exec tsc --noEmit",
         "scripts/smoke.sh"
       ],
       "passes": true

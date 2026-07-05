@@ -15,7 +15,7 @@ QuantA 现在已经能在发布链里读到财务 sidecar，不再只有 screene
 ## Verification
 
 1. `env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/api/dev_server.py backend/app/app_wiring/container.py backend/app/domains/market_data/repo.py backend/app/domains/analysis/bootstrap.py scripts/app_smoke.py`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `scripts/smoke.sh`
 4. `python3 scripts/check_harness_docs.py`
 5. `python3 scripts/check_execution_harness.py --require-all-passing`

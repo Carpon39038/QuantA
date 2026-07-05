@@ -35,7 +35,7 @@
       "description": "Frontend workbench reads /api/v1/system/alerts and shows recent runtime alerts together with stock corporate action details.",
       "verification": [
         "scripts/smoke.sh",
-        "node --check frontend/src/app/main.js"
+        "pnpm --dir frontend exec tsc --noEmit"
       ],
       "passes": true
     }

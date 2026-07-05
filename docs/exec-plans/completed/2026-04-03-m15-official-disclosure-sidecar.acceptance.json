@@ -36,7 +36,7 @@
       "title": "Workbench renders official disclosures",
       "description": "The frontend reads the disclosures payload and renders an official disclosure panel in stock detail.",
       "verification": [
-        "node --check frontend/src/app/main.js",
+        "pnpm --dir frontend exec tsc --noEmit",
         "scripts/app_smoke.py"
       ],
       "passes": true

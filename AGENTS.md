@@ -22,7 +22,7 @@ QuantA 当前处于绿地阶段，产品定位是用可复现的 A 股盘后研�
 2. [docs/HARNESS.md](docs/HARNESS.md)
 3. [docs/PLANS.md](docs/PLANS.md)
 4. [docs/product-specs/index.md](docs/product-specs/index.md)
-5. [docs/exec-plans/active/2026-03-27-m0-harness-bootstrap.md](docs/exec-plans/active/2026-03-27-m0-harness-bootstrap.md)
+5. [docs/exec-plans/active/README.md](docs/exec-plans/active/README.md)
 
 如果任务涉及某个特定领域，再补读：
 

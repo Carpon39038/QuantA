@@ -51,6 +51,19 @@
 6. `scripts/pipeline_smoke.py`
    对阶段化 pipeline、retry/backoff 和 scheduler resident 语义做额外的临时 runtime 验证。
 
+## Test Layers
+
+当前测试分层：
+
+1. `pnpm run test:unit`
+   运行 `tests/` 下的 pytest 单元/小集成测试，默认使用 `tmp_path` 隔离 DuckDB、队列和日志。
+2. `pnpm run frontend:browser-smoke`
+   临时启动 fixture-backed backend/frontend，用本机 Chrome/Chromium 执行 React workbench，断言 latest snapshot、alerts、history coverage、watchlist、stock detail、screener/backtest detail 可见；不依赖 live token。
+3. `pnpm run app:smoke`
+   运行后端、前端、API、队列 worker 和 app-level 集成路径。
+4. `pnpm run smoke`
+   执行完整 harness smoke，包括文档、执行计划、bootstrap、provider mapping、backfill、scheduler 和 app smoke。
+
 ## Long-Running Loop
 
 推荐的长期开发循环：

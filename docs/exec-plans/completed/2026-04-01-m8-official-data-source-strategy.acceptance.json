@@ -12,7 +12,7 @@
       "artifacts": [
         "ARCHITECTURE.md",
         "backend/app/README.md",
-        "docs/exec-plans/active/2026-04-01-m8-official-data-source-strategy.md"
+        "docs/exec-plans/completed/2026-04-01-m8-official-data-source-strategy.md"
       ],
       "verify_steps": [
         "python3 scripts/check_harness_docs.py"
@@ -26,7 +26,7 @@
       "description": "The repo distinguishes structured market data from official disclosure and public-information sources.",
       "artifacts": [
         "ARCHITECTURE.md",
-        "docs/exec-plans/active/2026-04-01-m8-official-data-source-strategy.md"
+        "docs/exec-plans/completed/2026-04-01-m8-official-data-source-strategy.md"
       ],
       "verify_steps": [
         "python3 scripts/check_harness_docs.py"
@@ -40,8 +40,8 @@
       "description": "AKShare and BaoStock remain formal supported source adapters, but the repo no longer implies that supplemental adapters or their hidden upstream endpoints should serve as the sole canonical persistence source.",
       "artifacts": [
         "backend/app/README.md",
-        "docs/exec-plans/active/2026-04-01-m8-official-data-source-strategy.md",
-        "docs/exec-plans/active/2026-04-01-m8-official-data-source-strategy.progress.md"
+        "docs/exec-plans/completed/2026-04-01-m8-official-data-source-strategy.md",
+        "docs/exec-plans/completed/2026-04-01-m8-official-data-source-strategy.progress.md"
       ],
       "verify_steps": [
         "python3 scripts/check_execution_harness.py --require-all-passing"

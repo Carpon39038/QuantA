@@ -34,7 +34,7 @@
 ## Verify By
 
 1. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `scripts/init_dev.sh`
 4. `scripts/smoke.sh`
 5. `pnpm run backend:dev`

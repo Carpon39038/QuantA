@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { AlertsResponse } from '../api/types';
+import type { AlertsResponse, SystemHealthResponse } from '../api/types';
 
 export function useSystem() {
   const [alerts, setAlerts] = useState<AlertsResponse | null>(null);
+  const [health, setHealth] = useState<SystemHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
@@ -12,11 +13,15 @@ export function useSystem() {
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAlerts = async () => {
+    const fetchSystem = async () => {
       try {
-        const payload = await api.alerts();
+        const [alertsPayload, healthPayload] = await Promise.all([
+          api.alerts(),
+          api.systemHealth(),
+        ]);
         if (cancelled) return;
-        setAlerts(payload);
+        setAlerts(alertsPayload);
+        setHealth(healthPayload);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -28,9 +33,9 @@ export function useSystem() {
       }
     };
 
-    void fetchAlerts();
+    void fetchSystem();
     const timer = window.setInterval(() => {
-      void fetchAlerts();
+      void fetchSystem();
     }, 15_000);
 
     return () => {
@@ -83,5 +88,5 @@ export function useSystem() {
     }
   }, [alerts]);
 
-  return { alerts, loading, error };
+  return { alerts, health, loading, error };
 }

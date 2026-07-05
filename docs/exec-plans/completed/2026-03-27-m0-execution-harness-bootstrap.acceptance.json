@@ -10,9 +10,9 @@
       "priority": 1,
       "description": "The active plan, acceptance JSON, and progress handoff are all present and validated by script.",
       "artifacts": [
-        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.md",
-        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.acceptance.json",
-        "docs/exec-plans/active/2026-03-27-m0-execution-harness-bootstrap.progress.md",
+        "docs/exec-plans/completed/2026-03-27-m0-execution-harness-bootstrap.md",
+        "docs/exec-plans/completed/2026-03-27-m0-execution-harness-bootstrap.acceptance.json",
+        "docs/exec-plans/completed/2026-03-27-m0-execution-harness-bootstrap.progress.md",
         "scripts/check_execution_harness.py"
       ],
       "verify_steps": [

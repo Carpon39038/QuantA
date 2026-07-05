@@ -15,7 +15,7 @@ QuantA 现在已经从“首页里有一个回测摘要卡片”推进到“Duck
 ## Verification
 
 1. `python3 -m backend.app.domains.backtest.bootstrap --print-summary`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `scripts/init_dev.sh`
 4. `scripts/smoke.sh`
 5. `pnpm run backend:dev`

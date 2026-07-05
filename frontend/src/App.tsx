@@ -14,7 +14,7 @@ import { BacktestPanel } from './components/BacktestPanel';
 
 export default function App() {
   const { data: snapshot, loading: snapshotLoading, error: snapshotError } = useSnapshot();
-  const { alerts, loading: alertsLoading } = useSystem();
+  const { alerts, health, loading: systemLoading } = useSystem();
   const { data: backtestDetail, loading: backtestLoading, error: backtestError } = useBacktest();
   const {
     data: intradayPreview,
@@ -74,12 +74,12 @@ export default function App() {
     <div className="min-h-screen bg-black p-4 md:p-8 text-sm font-sans text-white/90">
       <div className="w-full max-w-[1600px] mx-auto h-[90vh] bg-[#1C1C1E] rounded-xl shadow-2xl border border-white/10 flex flex-col overflow-hidden">
         {/* Status Strip */}
-        <StatusStrip snapshot={snapshot} health={null} />
+        <StatusStrip snapshot={snapshot} health={systemLoading ? null : health} />
 
         {/* Main Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar: Tasks + Alerts */}
-          <TaskSidebar snapshot={snapshot} alerts={alertsLoading ? null : alerts} />
+          <TaskSidebar snapshot={snapshot} alerts={systemLoading ? null : alerts} />
 
           {/* Center Column: Market + Watchlist */}
           <div className="w-[360px] border-r border-white/10 flex flex-col shrink-0 bg-[#1C1C1E]">

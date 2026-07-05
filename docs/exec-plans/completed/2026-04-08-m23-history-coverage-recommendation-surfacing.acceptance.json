@@ -26,7 +26,7 @@
       "title": "Workbench shows the next suggested history backfill target",
       "description": "The frontend status strip and alert summary render the current history coverage depth together with the next recommended target start date.",
       "verification": [
-        "node --check frontend/src/app/main.js",
+        "pnpm --dir frontend exec tsc --noEmit",
         "scripts/smoke.sh"
       ],
       "passes": true

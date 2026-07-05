@@ -19,7 +19,7 @@
 ## Verification
 
 1. `env PYTHONPYCACHEPREFIX=/tmp/quanta-pycache python3 -m py_compile backend/app/app_wiring/settings.py backend/app/app_wiring/container.py backend/app/api/dev_server.py backend/app/domains/market_data/schema.py backend/app/domains/market_data/bootstrap.py backend/app/domains/market_data/repo.py backend/app/domains/market_data/sync.py backend/app/shared/providers/corporate_action_source.py scripts/app_smoke.py scripts/market_data_backfill_smoke.py scripts/tushare_live_sync_smoke.py scripts/tushare_live_backfill_smoke.py`
-2. `node --check frontend/src/app/main.js`
+2. `pnpm --dir frontend exec tsc --noEmit`
 3. `scripts/smoke.sh`
 4. live `python3 scripts/tushare_live_sync_smoke.py`
 5. live `python3 scripts/tushare_live_backfill_smoke.py`

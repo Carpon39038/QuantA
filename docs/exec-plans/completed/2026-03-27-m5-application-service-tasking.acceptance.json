@@ -58,7 +58,7 @@
       "priority": 2,
       "description": "The repo clearly records that current POST triggers are queue-backed manual requests with worker consumption, while scheduler, retries, and alerting remain deferred.",
       "artifacts": [
-        "docs/exec-plans/active/2026-03-27-m5-application-service-tasking.md",
+        "docs/exec-plans/completed/2026-03-27-m5-application-service-tasking.md",
         "docs/exec-plans/tech-debt-tracker.md",
         "docs/QUALITY_SCORE.md"
       ],
